@@ -6,6 +6,7 @@
   "description": "Exploracao em primeira pessoa inspirada na estetica da serie Silo.",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "node server.js",
+    "test": "node test/layout.test.mjs"
   }
 }

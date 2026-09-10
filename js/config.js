@@ -3,22 +3,47 @@
 // ---------------------------------------------------------------------------
 
 export const WORLD = {
-  shaftR: 1.0, // inner void / center hole radius (also stair inner edge)
-  stairOuterR: 3.0, // outer edge of stair treads / stair railing
-  landingR: 4.6, // outer edge of a station's circular landing floor
-  corridorHalfW: 1.6,
-  corridorLen: 9,
-  plateauHalfAngle: 0.48, // angular half-width of the flat area at each station
-  risePerTurn: 8, // meters descended per full 360 degree turn of stairs
-  stepsPerTurn: 40,
+  shaftR: 1.7, // inner void / center hole radius (also stair inner edge)
+  stairOuterR: 6.2, // outer edge of stair treads / stair railing - wide, generous treads like the reference stills
+  // The stair lands on a small hub platform, NOT directly on the outer ring:
+  // between the hub and the ring there is a real open void (like the huge
+  // open gap between the central stair core and the inhabited ring visible
+  // in the widest reference stills) that you can only cross via a bridge at
+  // each wing's angle.
+  hubR: 7.0,
+  ringInnerR: 11.5,
+  landingR: 14.0, // outer edge of the ring (where the wall/rooms are)
+  bridgeHalfW: 1.7,
+  corridorHalfW: 1.8,
+  corridorLen: 10,
+  // Angular half-width of each station's flat hall. This wraps most of the
+  // way around the shaft (like a real atrium balcony), but NOT all the way
+  // to PI: since the spiral stair passes through the same compass direction
+  // once per full turn, a hall any wider leaves too little of that turn left
+  // over for the stair to actually gain height - the tread directly "one
+  // turn up" ends up only ~1.2m above the floor and the player's head clips
+  // through it. 2.5 rad (~286 degrees of hall) keeps a safe ~2.6m of
+  // clearance everywhere; see the headroom check in collision.js's tests.
+  plateauHalfAngle: 2.5,
+  risePerTurn: 10, // meters descended per full 360 degree turn of stairs
+  stepsPerTurn: 56,
   playerRadius: 0.35,
   eyeHeight: 1.65,
   roomHeight: 3.4,
 };
 
+// Every station has its main themed room (offset 0, using STATIONS[i].propType)
+// plus a couple of smaller generic wings branching off the same 360 degree
+// hall, so each floor has more than one door/corridor to look at.
+export const WING_OFFSETS = [0, 2.15, -2.15];
+export const SECONDARY_WING = {
+  roomHalfW: 3.2,
+  roomDepth: 7,
+};
+
 export const PLAYER_SPEED = {
-  walk: 3.0,
-  sprint: 5.6,
+  walk: 3.8,
+  sprint: 7.0,
   mouseSensitivity: 0.0022,
 };
 

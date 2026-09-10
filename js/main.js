@@ -8,7 +8,7 @@ import { describeLocation } from "./collision.js";
 
 const canvas = document.getElementById("game-canvas");
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.15;
@@ -18,7 +18,7 @@ const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(0x6c7680, 2.5, 70);
 scene.background = scene.fog.color;
 
-const ambient = new THREE.AmbientLight(0x8f97a0, 0.75);
+const ambient = new THREE.AmbientLight(0x8f97a0, 1.05);
 scene.add(ambient);
 
 const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.08, 160);
@@ -65,8 +65,10 @@ const interactableMeshes = interactables.map((entry) => entry.mesh);
 let lookedAt = null;
 
 function updateInteraction() {
-  scene.updateMatrixWorld();
-  camera.updateMatrixWorld();
+  // Called right after renderer.render(), so the scene graph and camera
+  // matrices are already current for this frame - no need to update them
+  // again here (the world is static, and re-walking the whole graph every
+  // frame just to raycast 10 planes was wasted CPU work).
   raycaster.setFromCamera(screenCenter, camera);
   const hits = raycaster.intersectObjects(interactableMeshes, false);
   lookedAt = hits.length > 0 ? interactables.find((entry) => entry.mesh === hits[0].object) : null;
@@ -114,9 +116,8 @@ function animate() {
   tmpColor.set(info.light);
   ambient.color.lerp(tmpColor, 0.06);
 
-  updateInteraction();
-
   renderer.render(scene, camera);
+  updateInteraction();
 }
 
 animate();

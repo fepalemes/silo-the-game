@@ -22,6 +22,12 @@ npm start
 Isso sobe um servidor estático simples em `http://localhost:8080`. Abra essa
 URL no Chrome, Edge, Firefox ou Safari recentes.
 
+Para rodar os testes de layout/colisão (não precisa de navegador):
+
+```bash
+npm test
+```
+
 ## Controles
 
 | Tecla       | Ação                    |
@@ -52,16 +58,29 @@ Cada andar tem um pequeno registro/placa (tecla `E`) com um texto de lore
 original. Entre um andar e outro, placas na escadaria mostram o número do
 nível conforme você desce.
 
+A escada não pousa direto no hall: ela termina num "hub" pequeno ao redor do
+vão central, separado por um vazio real (sem piso, dá pra ver através) de um
+anel externo bem mais largo — igual ao vão entre o núcleo da escada e o
+anel de sacadas nas imagens de referência. Só se cruza esse vazio por pontes
+com corrimão, uma para cada ala. O anel externo é quase 360° (só uma pequena
+fresta é onde a espiral continua descendo), com corrimão nas duas bordas do
+vazio, pilares com luzes em tubo e janelas/venezianas pequenas nas paredes.
+Cada andar tem 3 alas: a sala temática principal (a lista acima) mais duas
+alas menores genéricas (portas extras, caixotes, tubulação) só para dar mais
+volume ao andar.
+
 ## Arquitetura (para quem for mexer no código)
 
 - `js/config.js` — todas as constantes de layout (raios, alturas, ângulos) e
   os dados de cada estação (cor, textos, tema de sala).
 - `js/collision.js` — o "motor" do mundo: dado um ângulo acumulado (`theta`)
   em torno do eixo central, decide se o jogador está num patamar (andar) ou
-  numa rampa de escada, e resolve colisão/altura. É puro JS sem depender de
-  three.js, então dá para testar isoladamente com Node.
-- `js/world.js` — constrói toda a geometria three.js (escadaria, corrimãos,
-  andares, salas temáticas) a partir do layout calculado em `config.js`.
+  numa rampa de escada. Num patamar, checa hub → vazio/ponte → anel → alas
+  (`WING_OFFSETS` em `config.js`), nessa ordem. É puro JS sem depender de
+  three.js, então dá para testar isoladamente com Node (`npm test`).
+- `js/world.js` — constrói toda a geometria three.js (escadaria, hub, pontes,
+  anel externo quase-360°, pilares, salas temáticas e alas genéricas) a
+  partir do layout calculado em `config.js`.
 - `js/player.js` — pointer lock, WASD, head-bob; delega toda a física de
   colisão para `collision.js`.
 - `js/textures.js` — texturas procedurais (concreto, grade metálica, placas
@@ -76,4 +95,10 @@ nível conforme você desce.
   trechos de escada com placas de número).
 - NPCs simples parados pelos corredores.
 - Um objetivo real (ex.: encontrar algo específico no Gerador).
-- Perigo de cair no vão central da escada (hoje o corrimão é sólido).
+- Perigo de cair no vão central da escada ou no vazio entre o hub e o anel
+  (hoje os corrimãos são sólidos, ninguém cai).
+- Elementos vistos nas imagens de referência mais recentes que ainda não
+  entraram: luminárias tipo lanterna (além dos tubos), torres de água de
+  madeira nas Roças, e salas que atravessam vários andares ao mesmo tempo
+  (tipo anfiteatro) - esse último exigiria repensar o modelo de colisão de
+  novo, é bastante trabalho.

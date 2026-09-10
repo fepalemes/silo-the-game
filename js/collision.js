@@ -1,4 +1,4 @@
-import { WORLD } from "./config.js";
+import { SECONDARY_WING, WING_OFFSETS, WORLD } from "./config.js";
 import { clamp, lerp, lerpHexColor, unwrapAngleNear } from "./mathutils.js";
 
 const TAPER_FRACTION = 0.12;
@@ -11,7 +11,7 @@ export function slopeOuterRadius(t) {
   const nearStart = clamp(t / TAPER_FRACTION, 0, 1);
   const nearEnd = clamp((1 - t) / TAPER_FRACTION, 0, 1);
   const narrow = Math.min(nearStart, nearEnd);
-  return lerp(WORLD.landingR, WORLD.stairOuterR, narrow);
+  return lerp(WORLD.hubR, WORLD.stairOuterR, narrow);
 }
 
 // Classifies a continuously-tracked (unwrapped) angle into either a
@@ -40,30 +40,51 @@ export function classifyTheta(layout, theta) {
   return { type: "plateau", station: fallback, theta: clamped };
 }
 
+// A station's plateau, from the shaft outward: a small hub where the stair
+// actually lands, then a real open void (no floor at all, matching the gap
+// between the central stair core and the balcony ring in the reference
+// stills), then the outer ring hall (walkable at any angle, like a real
+// atrium balcony), then the wing corridors/rooms beyond it. The void can
+// only be crossed via a bridge at each wing's angle (WING_OFFSETS).
 function resolveOnStation(station, px, pz) {
   const playerR = WORLD.playerRadius;
   const r = Math.hypot(px, pz);
 
   if (r < WORLD.shaftR + playerR) return { ok: false };
-  if (r <= WORLD.landingR - playerR) return { ok: true, x: px, y: station.y, z: pz };
-
-  const cos = Math.cos(station.theta);
-  const sin = Math.sin(station.theta);
-  const lx = px * cos + pz * sin; // local axis pointing out along the corridor
-  const lz = -px * sin + pz * cos; // local sideways axis
-
-  const inCorridor =
-    lx >= WORLD.landingR - playerR &&
-    lx <= WORLD.landingR + WORLD.corridorLen &&
-    Math.abs(lz) <= WORLD.corridorHalfW - playerR;
+  if (r <= WORLD.hubR - playerR) return { ok: true, x: px, y: station.y, z: pz };
+  if (r >= WORLD.ringInnerR + playerR && r <= WORLD.landingR - playerR) {
+    return { ok: true, x: px, y: station.y, z: pz };
+  }
 
   const roomStart = WORLD.landingR + WORLD.corridorLen;
-  const inRoom =
-    lx >= roomStart - playerR &&
-    lx <= roomStart + station.roomDepth - playerR &&
-    Math.abs(lz) <= station.roomHalfW - playerR;
 
-  if (inCorridor || inRoom) return { ok: true, x: px, y: station.y, z: pz };
+  for (let i = 0; i < WING_OFFSETS.length; i++) {
+    const angle = station.theta + WING_OFFSETS[i];
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    const lx = px * cos + pz * sin; // local axis pointing out along this wing's corridor
+    const lz = -px * sin + pz * cos; // local sideways axis
+    const roomHalfW = i === 0 ? station.roomHalfW : SECONDARY_WING.roomHalfW;
+    const roomDepth = i === 0 ? station.roomDepth : SECONDARY_WING.roomDepth;
+
+    const inBridge =
+      lx >= WORLD.hubR - playerR &&
+      lx <= WORLD.ringInnerR + playerR &&
+      Math.abs(lz) <= WORLD.bridgeHalfW - playerR;
+
+    const inCorridor =
+      lx >= WORLD.landingR - playerR &&
+      lx <= WORLD.landingR + WORLD.corridorLen &&
+      Math.abs(lz) <= WORLD.corridorHalfW - playerR;
+
+    const inRoom =
+      lx >= roomStart - playerR &&
+      lx <= roomStart + roomDepth - playerR &&
+      Math.abs(lz) <= roomHalfW - playerR;
+
+    if (inBridge || inCorridor || inRoom) return { ok: true, x: px, y: station.y, z: pz };
+  }
+
   return { ok: false };
 }
 
