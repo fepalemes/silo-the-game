@@ -1,0 +1,255 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: #05070a;
+  overflow: hidden;
+  font-family: "Courier New", ui-monospace, monospace;
+  color: #e9dfc4;
+  -webkit-font-smoothing: antialiased;
+}
+
+#game-canvas {
+  position: fixed;
+  inset: 0;
+  display: block;
+  outline: none;
+}
+
+#hud,
+#hud * {
+  pointer-events: none;
+}
+
+#hud {
+  position: fixed;
+  inset: 0;
+}
+
+#crosshair {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 6px;
+  height: 6px;
+  margin: -3px 0 0 -3px;
+  border-radius: 50%;
+  background: rgba(233, 223, 196, 0.75);
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.6);
+}
+
+#level-info {
+  position: absolute;
+  top: 22px;
+  left: 26px;
+  padding: 10px 16px;
+  background: rgba(8, 10, 12, 0.55);
+  border: 1px solid rgba(233, 223, 196, 0.25);
+  border-left: 3px solid rgba(233, 223, 196, 0.6);
+  letter-spacing: 0.06em;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+#level-number {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+#level-name {
+  font-size: 20px;
+  font-weight: bold;
+  letter-spacing: 0.12em;
+  margin: 2px 0;
+}
+
+#level-sub {
+  font-size: 12px;
+  opacity: 0.65;
+}
+
+#depth-bar {
+  position: absolute;
+  top: 50%;
+  right: 22px;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+.depth-label {
+  font-size: 11px;
+  opacity: 0.55;
+}
+
+#depth-track {
+  position: relative;
+  width: 3px;
+  height: 220px;
+  background: rgba(233, 223, 196, 0.2);
+}
+
+#depth-marker {
+  position: absolute;
+  left: -4px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #ffb15a;
+  box-shadow: 0 0 8px rgba(255, 177, 90, 0.9);
+  transform: translateY(-50%);
+}
+
+#interact-prompt {
+  position: absolute;
+  bottom: 32%;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 14px;
+  background: rgba(8, 10, 12, 0.6);
+  border: 1px solid rgba(233, 223, 196, 0.35);
+  font-size: 13px;
+  letter-spacing: 0.08em;
+}
+
+#lore-panel {
+  position: absolute;
+  bottom: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(560px, 78vw);
+  padding: 18px 22px;
+  background: rgba(6, 8, 10, 0.82);
+  border: 1px solid rgba(233, 223, 196, 0.3);
+  border-top: 2px solid #ffb15a;
+}
+
+#lore-title {
+  font-size: 13px;
+  letter-spacing: 0.1em;
+  opacity: 0.75;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+}
+
+#lore-body {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.lore-hint {
+  margin-top: 10px;
+  font-size: 11px;
+  opacity: 0.5;
+  text-align: right;
+}
+
+#start-screen,
+#pause-screen {
+  position: fixed;
+  inset: 0;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(ellipse at center, rgba(30, 28, 24, 0.85) 0%, rgba(3, 4, 5, 0.96) 100%);
+  cursor: pointer;
+  z-index: 10;
+}
+
+/* `display` must only be set while the element is NOT [hidden] - an ID rule
+   that always sets `display: flex` would out-specificity the browser's
+   default `[hidden] { display: none }` and the overlay would never hide. */
+#start-screen:not([hidden]),
+#pause-screen:not([hidden]) {
+  display: flex;
+}
+
+.panel {
+  max-width: 520px;
+  padding: 34px 40px;
+  text-align: center;
+  border: 1px solid rgba(233, 223, 196, 0.25);
+  background: rgba(10, 11, 13, 0.55);
+}
+
+.panel h1 {
+  font-size: 42px;
+  letter-spacing: 0.35em;
+  margin: 0 0 6px;
+  color: #f2e6c8;
+  text-shadow: 0 0 18px rgba(255, 177, 90, 0.35);
+}
+
+.panel h2 {
+  font-size: 24px;
+  letter-spacing: 0.2em;
+  margin: 0 0 10px;
+}
+
+.tagline {
+  font-size: 13px;
+  opacity: 0.65;
+  margin: 0 0 22px;
+  line-height: 1.5;
+}
+
+.controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 22px;
+  font-size: 13px;
+  margin-bottom: 26px;
+  text-align: left;
+}
+
+.controls div {
+  display: flex;
+  justify-content: space-between;
+  border-bottom: 1px dashed rgba(233, 223, 196, 0.2);
+  padding-bottom: 4px;
+}
+
+.controls b {
+  color: #ffb15a;
+  letter-spacing: 0.05em;
+}
+
+.controls span {
+  opacity: 0.7;
+}
+
+.cta {
+  font-size: 13px;
+  letter-spacing: 0.15em;
+  padding: 10px;
+  border: 1px solid rgba(255, 177, 90, 0.5);
+  animation: pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 0.7;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (max-width: 560px) {
+  .controls {
+    grid-template-columns: 1fr;
+  }
+  .panel {
+    padding: 24px 22px;
+  }
+  #depth-bar {
+    display: none;
+  }
+}

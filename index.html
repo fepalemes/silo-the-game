@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SILO — Descida</title>
+    <link rel="stylesheet" href="css/style.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <canvas id="game-canvas"></canvas>
+
+    <div id="hud">
+      <div id="crosshair"></div>
+
+      <div id="level-info">
+        <div id="level-number">NÍVEL 1</div>
+        <div id="level-name">TOPO</div>
+        <div id="level-sub">Sala de Observação</div>
+      </div>
+
+      <div id="depth-bar">
+        <span class="depth-label">1</span>
+        <div id="depth-track"><div id="depth-marker"></div></div>
+        <span class="depth-label">144</span>
+      </div>
+
+      <div id="interact-prompt" hidden>[E] examinar registro</div>
+
+      <div id="lore-panel" hidden>
+        <div id="lore-title"></div>
+        <p id="lore-body"></p>
+        <div class="lore-hint">[E] fechar</div>
+      </div>
+    </div>
+
+    <div id="start-screen">
+      <div class="panel">
+        <h1>SILO</h1>
+        <p class="tagline">uma descida não oficial de exploração, inspirada na estética da série da Apple TV+</p>
+        <div class="controls">
+          <div><b>W A S D</b><span>mover</span></div>
+          <div><b>Mouse</b><span>olhar em volta</span></div>
+          <div><b>Shift</b><span>correr</span></div>
+          <div><b>E</b><span>examinar registros</span></div>
+          <div><b>Esc</b><span>pausar</span></div>
+        </div>
+        <div class="cta">clique para começar a descida</div>
+      </div>
+    </div>
+
+    <div id="pause-screen" hidden>
+      <div class="panel">
+        <h2>Pausado</h2>
+        <p>Clique para continuar a descida.</p>
+      </div>
+    </div>
+
+    <script type="module" src="js/main.js"></script>
+  </body>
+</html>

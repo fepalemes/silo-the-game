@@ -1,0 +1,11 @@
+{
+  "name": "silo-the-game",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Exploracao em primeira pessoa inspirada na estetica da serie Silo.",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  }
+}
