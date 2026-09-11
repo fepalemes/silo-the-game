@@ -1,3 +1,4 @@
+import { zoneForLevel } from "./config.js";
 import { clamp, lerp } from "./mathutils.js";
 
 export function initHud() {
@@ -40,11 +41,13 @@ export function initHud() {
       const lvl = Math.round(lerp(info.fromStation.level, info.toStation.level, info.progress));
       el.levelName.textContent = "ESCADARIA";
       el.levelSub.textContent = `Entre ${info.fromStation.name} e ${info.toStation.name}`;
-      el.levelNumber.textContent = `NÍVEL ${lvl}`;
+      el.levelNumber.textContent = `NÍVEL ${lvl} · ${zoneForLevel(lvl).name}`;
     } else {
       el.levelName.textContent = info.station.name;
       el.levelSub.textContent = info.station.subtitle;
-      el.levelNumber.textContent = `NÍVEL ${info.station.level}`;
+      el.levelNumber.textContent = info.station.isSublevel
+        ? `ABAIXO DO NÍVEL ${info.station.level}`
+        : `NÍVEL ${info.station.level} · ${zoneForLevel(info.station.level).name}`;
     }
   }
 

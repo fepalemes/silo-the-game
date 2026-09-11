@@ -3,7 +3,7 @@
 // to get subtly wrong when tuning constants - in particular the headroom
 // check below caught a real bug where widening the hall (plateauHalfAngle)
 // left the player's head clipping through the stair tread "one turn up".
-import { buildLayout, WORLD } from "../js/config.js";
+import { buildLayout, STATIONS, TRANSIT_TURNS, WORLD, ZONES, zoneForLevel } from "../js/config.js";
 import { classifyTheta, resolveMove, slopeOuterRadius } from "../js/collision.js";
 
 let failures = 0;
@@ -26,6 +26,56 @@ function heightAt(theta) {
   const zone = classifyTheta(layout, theta);
   if (zone.type === "plateau") return zone.station.y;
   return zone.slope.yStart + (zone.slope.yEnd - zone.slope.yStart) * zone.t;
+}
+
+// --- Station data vs. the structural-cutaway zoning --------------------
+// The reference diagram fixes which band of the silo each function lives in
+// (governance/sheriff up top, schools upper-middle, medical middle, farms
+// and IT middle-lower, machinery at the bottom). These checks stop a level
+// number from silently drifting into the wrong band again.
+{
+  assert(TRANSIT_TURNS.length === STATIONS.length - 1, `TRANSIT_TURNS has one entry per gap (${TRANSIT_TURNS.length} vs ${STATIONS.length - 1})`);
+  assert(TRANSIT_TURNS.every((t) => t >= 2), "every transit is at least 2 turns (keeps the headroom margin)");
+
+  const expectedZone = {
+    topo: "SILO SUPERIOR",
+    judicial: "SILO SUPERIOR",
+    ninho: "SILO SUPERIOR",
+    residencial: "SUPERIOR-MÉDIO",
+    creche: "SUPERIOR-MÉDIO",
+    enfermaria: "SILO MÉDIO",
+    bazar: "SILO MÉDIO",
+    rocas: "MÉDIO-INFERIOR",
+    agua: "MÉDIO-INFERIOR",
+    ti: "MÉDIO-INFERIOR",
+    mecanica: "FUNDO DO SILO",
+    gerador: "FUNDO DO SILO",
+    escavador: "FUNDO DO SILO",
+  };
+  for (const station of STATIONS) {
+    const actual = zoneForLevel(station.level).name;
+    assert(actual === expectedZone[station.id], `${station.id} (nível ${station.level}) fica em ${expectedZone[station.id]} - got ${actual}`);
+  }
+
+  // Levels increase going down. Sub-levels (the Digger Void under the silo)
+  // are not numbered levels of their own, so they repeat the level above.
+  for (let i = 1; i < STATIONS.length; i++) {
+    const ok = STATIONS[i].isSublevel ? STATIONS[i].level >= STATIONS[i - 1].level : STATIONS[i].level > STATIONS[i - 1].level;
+    assert(ok, `station ${i} (${STATIONS[i].id}) level increases going down`);
+  }
+  const numbered = STATIONS.filter((s) => !s.isSublevel);
+  assert(numbered[numbered.length - 1].level === 144, "the deepest numbered level is 144");
+  assert(STATIONS.some((s) => s.isSublevel), "the silo has something below its last numbered level");
+  assert(ZONES[ZONES.length - 1].to === 144, "zoning covers all 144 levels");
+}
+
+// --- Nothing may poke out through the silo's outer shell ----------------
+{
+  const deepest = Math.max(...STATIONS.map((s) => s.roomDepth));
+  const reach = WORLD.landingR + WORLD.corridorLen + deepest;
+  assert(reach < WORLD.shellR, `the deepest room ends at r=${reach} which is inside the shell at r=${WORLD.shellR}`);
+  assert(WORLD.hubR < WORLD.ringInnerR, "hub is inside the ring (there is a void between them)");
+  assert(WORLD.stairOuterR <= WORLD.hubR, "the stair fits on the hub platform");
 }
 
 // --- Layout sanity -----------------------------------------------------
@@ -65,9 +115,13 @@ function heightAt(theta) {
 
 // --- Movement smoke tests (station rooms + full descent) ---------------
 {
+  // Step count is derived from the actual geometry so this keeps working
+  // when the silo's dimensions are retuned.
   let state = { x: 3.0, y: 0, z: 0, theta: 0 };
-  for (let i = 0; i < 600; i++) state = resolveMove(layout, state, 0.05, 0);
-  assert(state.x > WORLD.landingR + WORLD.corridorLen, "reaches the main room of station 0");
+  const target = WORLD.landingR + WORLD.corridorLen + 2;
+  const steps = Math.ceil((target / 0.05) * 1.3);
+  for (let i = 0; i < steps; i++) state = resolveMove(layout, state, 0.05, 0);
+  assert(state.x > WORLD.landingR + WORLD.corridorLen, `reaches the main room of station 0 (x=${state.x.toFixed(1)})`);
   assert(approx(state.y, 0), "main room floor stays flat");
 }
 
@@ -97,8 +151,9 @@ assert(approx(slopeOuterRadius(0.5), WORLD.stairOuterR), "slope radius at t=0.5 
 // --- Reaching the ring and crossing a bridge into a secondary wing --------
 {
   let state = { x: 3.0, y: 0, z: 0, theta: 0 };
-  // Walk to the hub edge, then along wing offset [1] to cross the bridge.
-  for (let i = 0; i < 700; i++) state = resolveMove(layout, state, 0.05, 0);
+  // Walk straight out along the main wing: hub -> bridge -> ring -> room.
+  const walkSteps = Math.ceil(((WORLD.landingR + WORLD.corridorLen + 4) / 0.05) * 1.3);
+  for (let i = 0; i < walkSteps; i++) state = resolveMove(layout, state, 0.05, 0);
   const r = Math.hypot(state.x, state.z);
   assert(r > WORLD.landingR + WORLD.corridorLen - 1, `walking straight out along the main wing crosses hub+void+ring into the room (r=${r.toFixed(2)})`);
 }

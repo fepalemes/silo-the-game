@@ -6,10 +6,10 @@ const MAX_PITCH = 1.5;
 
 // Pointer-lock FPS controller. Movement/collision math lives in collision.js;
 // this module only owns input, camera orientation and head-bob/footsteps.
-export function createPlayer({ camera, domElement, layout, initialState, onLockChange, onFootstep }) {
+export function createPlayer({ camera, domElement, layout, initialState, onLockChange, onFootstep, frozen = false }) {
   const state = { ...initialState };
   let yaw = initialState.yaw ?? -Math.PI / 2;
-  let pitch = 0;
+  let pitch = initialState.pitch ?? 0;
   let locked = false;
   let bobPhase = 0;
   let lastStepIndex = 0;
@@ -42,6 +42,15 @@ export function createPlayer({ camera, domElement, layout, initialState, onLockC
   camera.rotation.order = "YXZ";
 
   function update(dt) {
+    // Debug viewpoints park the camera somewhere (possibly mid-air, over the
+    // void) and skip collision entirely - see js/viewpoints.js.
+    if (frozen) {
+      camera.position.set(state.x, state.y, state.z);
+      camera.rotation.y = yaw;
+      camera.rotation.x = pitch;
+      return { moving: false, sprinting: false };
+    }
+
     const forwardInput = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0);
     const rightInput = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0);
     const sprinting = Boolean(keys.ShiftLeft || keys.ShiftRight);

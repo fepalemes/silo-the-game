@@ -21,6 +21,16 @@ export function unwrapAngleNear(rawAngle, reference) {
   return rawAngle + turns * TAU;
 }
 
+// Scales a hex colour's brightness, clamping each channel. Used to claw back
+// the brightness lost when a light neutral texture is multiplied by a
+// station's (already fairly dark) palette colour.
+export function scaleHexColor(hex, factor) {
+  const r = clamp(Math.round(((hex >> 16) & 0xff) * factor), 0, 255);
+  const g = clamp(Math.round(((hex >> 8) & 0xff) * factor), 0, 255);
+  const b = clamp(Math.round((hex & 0xff) * factor), 0, 255);
+  return (r << 16) | (g << 8) | b;
+}
+
 export function lerpHexColor(hexA, hexB, t) {
   const c = smooth01(t);
   const ar = (hexA >> 16) & 0xff;
