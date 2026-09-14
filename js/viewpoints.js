@@ -12,7 +12,7 @@ function yawToward(fromX, fromZ, toX, toZ) {
 
 const at = (r, theta, y) => ({ x: r * Math.cos(theta), z: r * Math.sin(theta), y });
 
-export const VIEWPOINT_NAMES = ["hub", "shaft", "down", "up", "ring", "bridge", "room", "cafeteria", "entrada", "stairs", "deep", "void"];
+export const VIEWPOINT_NAMES = ["hub", "shaft", "down", "up", "ring", "bridge", "room", "cafeteria", "entrada", "residencial", "apartamento", "stairs", "deep", "void"];
 
 export function getViewpoint(name, layout) {
   const EYE = WORLD.eyeHeight;
@@ -23,6 +23,14 @@ export function getViewpoint(name, layout) {
   const deep = byId("mecanica");
 
   switch (name) {
+    case "residencial":
+    case "apartamento": {
+      const st=byId('residencial'),a=(st.wingRotation||0)+WING_OFFSETS[0];
+      const x=name==='apartamento'?37.9:33,z=name==='apartamento'?3.35:0;
+      const tx=name==='apartamento'?35.8:50,tz=name==='apartamento'?6.5:0;
+      const p={x:x*Math.cos(a)-z*Math.sin(a),z:x*Math.sin(a)+z*Math.cos(a),y:st.y+EYE};
+      return {...p,theta:st.theta,level:st.index,yaw:yawToward(p.x,p.z,tx*Math.cos(a)-tz*Math.sin(a),tx*Math.sin(a)+tz*Math.cos(a)),pitch:-.08};
+    }
     // Standing on the hub looking out across the void, the way the game starts.
     case "hub": {
       const p = at(5, 0, s0.y + EYE);

@@ -20,6 +20,13 @@
 
     <div id="hud" hidden>
       <div id="crosshair"></div>
+      <aside id="mission-panel" aria-label="Missão atual">
+        <div class="eyebrow">PRIMEIROS PASSOS / SILO 18</div>
+        <div id="mission-summary" role="status" aria-live="polite"></div>
+        <ol id="mission-steps"></ol>
+        <p id="mission-hint"></p>
+      </aside>
+      <div id="save-notice" role="status" aria-live="polite">P · salvar progresso</div>
 
       <div id="level-info">
         <div id="level-number">NÍVEL 1</div>
@@ -57,6 +64,7 @@
           <div><b>E</b><span>ler / fechar registro</span></div>
           <div><b>M</b><span>som ligado / desligado</span></div>
           <div><b>Esc</b><span>pausar</span></div>
+          <div><b>P</b><span>salvar progresso</span></div>
         </div>
         <button id="start-button" class="cta" disabled>Preparando a descida…</button>
         <p id="status" role="status">Construindo as galerias e a escadaria.</p>
@@ -70,6 +78,8 @@
         <h2>Uma pausa na descida.</h2>
         <p>Seu lugar está aqui. Continue quando quiser.</p>
         <button id="resume-button" class="cta">Continuar →</button>
+        <button id="save-button" class="cta secondary">Salvar progresso · P</button>
+        <p class="credit">Salvo neste navegador. Retome pelo botão Continuar ao abrir o jogo.</p>
         <p id="pause-status" role="status"></p>
       </div>
     </div>

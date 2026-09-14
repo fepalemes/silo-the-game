@@ -374,3 +374,34 @@ durante a caminhada. `npm test` cobre também essa lógica.
 
 Use `?view=entrada&hud=0` para conferir o acesso à cafeteria. Há dois mapas de
 sombra estáticos no nível 1 (cafeteria e galeria); `?shadows=0` desliga ambos.
+
+### Progresso e objetivos
+
+`P` salva posição, direção do olhar, registros examinados e objetivos. O menu
+de pausa também tem **Salvar progresso**. Há salvamento automático ao pausar,
+concluir etapas e a cada 30 segundos de jogo ativo. Ao reabrir, **Continuar
+exploração** retoma a partida no mesmo navegador e endereço; não há conta ou
+sincronização entre dispositivos. Limpar os dados do site remove o progresso.
+
+O painel **Primeiros passos** acompanha três objetivos reais: atravessar a
+passarela do nível 1, examinar o registro do Topo com `E` e aproximar-se do painel
+da cafeteria. Mostra etapas concluídas e a instrução atual. A ordem de visita
+não impede a conclusão; depois a exploração permanece livre. Esta é a missão
+introdutória, anterior ao inventário, relíquias e missões com NPCs do plano.
+
+Salvamentos incompatíveis ou corrompidos são preservados até uma substituição
+manual confirmada. Falhas de armazenamento aparecem na interface. Capturas
+com `?view=` e layouts experimentais com `?wings=` não usam nem alteram saves.
+
+### Ala residencial — nível 28
+
+A ala principal do Residencial tem corredor de 4,4 m, três apartamentos com
+estar/cozinha, quarto e banheiro, além de lavanderia, depósito e oficina.
+Aproxime-se de uma porta, olhe para ela e use `E` para abrir ou fechar. A folha
+aberta também possui colisão; afaste-se da passagem se a porta não puder mover.
+O estado das portas é salvo com a partida. Saves antigos que coincidam com uma
+parede ou móvel novo são retomados no corredor do mesmo andar.
+
+`?view=residencial&hud=0` mostra o corredor; `?view=apartamento&hud=0` mostra o
+interior. São vistas de inspeção, sem movimento nem alteração do save.
+`npm run test:residential` verifica as portas, os seis interiores e a retomada.

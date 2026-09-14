@@ -1,5 +1,6 @@
 import * as THREE from "three";
-import { buildLayout, setWingCount } from "./config.js";
+import { createProgress, createSaveStore, STEPS } from "./progress.js";
+import { buildLayout, setWingCount, WING_OFFSETS } from "./config.js";
 import { buildWorld } from "./world/index.js";
 import { createPlayer } from "./player.js";
 import { initHud } from "./hud.js";
@@ -87,11 +88,33 @@ if (params.get("hud") === "0") {
   }
 }
 
+const diagnostic = params.has("view") || params.has("wings");
+const saveStore = createSaveStore(() => window.localStorage, layout, 'layout-148-v1');
+const loaded = diagnostic ? {} : saveStore.load();
+const progress = createProgress(loaded.save?.progress);
+let saveProtected = Boolean(loaded.error);
+for(const entry of interactables)if(entry.isDoor)entry.setOpen(loaded.save?.progress.doors?.[entry.id] || false);
+// A save from the old residential room may overlap a new partition/furniture.
+// Keep discoveries and orientation; relocate only obstructed positions.
+let restoredAtSafePoint=false;
+if(loaded.save) {
+  const p=loaded.save.player,st=layout.stations[p.level];
+  if(st?.id==='residencial' && st.obstacles.some(o=>{
+    const x=p.x*Math.cos(o.angle)+p.z*Math.sin(o.angle)-o.x;
+    const z=-p.x*Math.sin(o.angle)+p.z*Math.cos(o.angle)-o.z;
+    return Math.hypot(Math.max(0,Math.abs(x)-o.hw),Math.max(0,Math.abs(z)-o.hd))<.35;
+  })) {
+    const a=st.wingRotation+WING_OFFSETS[0];
+    Object.assign(p,{x:32*Math.cos(a),z:32*Math.sin(a),y:st.y,theta:st.theta});
+    restoredAtSafePoint=true;
+  }
+}
+
 const player = createPlayer({
   camera,
   domElement: renderer.domElement,
   layout,
-  initialState: viewpoint || { x: 3.0, y: 0, z: 0, theta: 0, level: null, yaw: -Math.PI / 2 },
+  initialState: viewpoint || loaded.save?.player || { x: 3.0, y: 0, z: 0, theta: 0, level: null, yaw: -Math.PI / 2 },
   frozen: Boolean(viewpoint),
   onLockChange: handleLockChange,
   onLockError: () => hud.setStatus("Não foi possível capturar o mouse. Clique em entrar para tentar novamente."),
@@ -109,6 +132,7 @@ function handleLockChange(locked) {
     hud.hideLore();
     player.setSuspended(false);
     hud.setPaused(true);
+    saveProgress(false);
   }
 }
 
@@ -116,6 +140,43 @@ hud.showStart(() => {
   audio.ensureContext();
   player.requestLock();
 });
+
+if (loaded.save) {
+  document.getElementById('start-button').textContent = 'Continuar exploração →';
+  hud.setStatus('Progresso de ' + new Date(loaded.save.savedAt).toLocaleString('pt-BR') + (restoredAtSafePoint ? ' · posição ajustada para o corredor residencial' : ' · salvo neste navegador'));
+} else if (loaded.error) hud.setStatus(loaded.error);
+
+let lastProgressUI = '';
+function updateProgressUI() {
+  const data=progress.snapshot(), key=JSON.stringify(data);
+  if(key===lastProgressUI)return;
+  lastProgressUI=key;
+  const next=STEPS.find(s=>!data.completed.includes(s.id));
+  document.getElementById('mission-summary').textContent=next ? `${data.completed.length}/${STEPS.length} · ${next.title}` : 'Missão concluída · continue explorando';
+  document.getElementById('mission-hint').textContent=next?.hint || 'Explore os apartamentos e serviços do nível 28. Nas portas, use E para abrir ou fechar.';
+  document.getElementById('mission-steps').replaceChildren(...STEPS.map(s=>{
+    const li=document.createElement('li'),done=data.completed.includes(s.id);
+    li.textContent=`${done?'✓':s===next?'→':'○'} ${s.title}`;
+    li.className=done?'done':s===next?'current':'';
+    if(s===next)li.setAttribute('aria-current','step');
+    return li;
+  }));
+}
+function saveProgress(manual=false) {
+  if(diagnostic || !started)return;
+  if(saveProtected && !manual)return;
+  // A failed/corrupt load is preserved until an explicit manual save.
+  if(saveProtected && !window.confirm('Substituir o progresso que não pôde ser carregado pela partida atual?'))return;
+  const result=saveStore.save(player.snapshot(),progress.snapshot());
+  const message=result.error || `Progresso salvo às ${new Date(result.save.savedAt).toLocaleTimeString('pt-BR')}`;
+  document.getElementById('save-notice').textContent=message+' · P para salvar';
+  document.getElementById('pause-status').textContent=message;
+  if(!result.error)saveProtected=false;
+}
+updateProgressUI();
+document.getElementById('save-button').addEventListener('click',()=>saveProgress(true));
+window.setInterval(()=>{if(player.isLocked())saveProgress(false);},30000);
+window.addEventListener('pagehide',()=>saveProgress(false));
 
 const pauseScreen = document.getElementById("resume-button");
 pauseScreen.addEventListener("click", () => player.requestLock());
@@ -140,9 +201,11 @@ function updateInteraction() {
   const front = hit ? raycaster.intersectObjects(hit.object.parent.children, true)[0] : null;
   lookedAt = hit && front?.object === hit.object ? interactables.find((entry) => entry.mesh === hit.object) : null;
   hud.setInteractVisible(Boolean(lookedAt) && !hud.isLoreOpen());
+  document.getElementById("interact-prompt").textContent=lookedAt?.prompt?.() || "[E] examinar registro";
 }
 
 window.addEventListener("keydown", (e) => {
+  if (e.code === "KeyP" && !e.repeat && started) { e.preventDefault(); saveProgress(true); }
   if (e.code === "KeyM" && !e.repeat && player.isLocked()) audio.toggleMuted();
   if (e.code !== "KeyE" || e.repeat || !player.isLocked()) return;
   if (hud.isLoreOpen()) {
@@ -150,8 +213,17 @@ window.addEventListener("keydown", (e) => {
     player.setSuspended(false);
     return;
   }
+  if (lookedAt?.action) {
+    if(!lookedAt.action(player.getState())) {
+      document.getElementById('save-notice').textContent='Afaste-se da passagem para mover a porta.';
+      return;
+    }
+    progress.door(lookedAt.id,lookedAt.getOpen());saveProgress(false);audio.interact();
+    return;
+  }
   if (lookedAt) {
     hud.showLore(lookedAt.station);
+    if(progress.read(lookedAt.station.id)){updateProgressUI();saveProgress(false);}
     player.setSuspended(true);
     audio.interact();
   }
@@ -188,6 +260,14 @@ function animate() {
   player.update(dt);
   const state = player.getState();
   world.update(camera.position, dt);
+  if(started && !diagnostic) {
+    let changed=false;
+    if(state.level===0 && Math.hypot(state.x,state.z)>=16) changed=progress.complete('gallery') || changed;
+    const a=(layout.stations[0].wingRotation||0)+WING_OFFSETS[0];
+    const x=state.x*Math.cos(a)+state.z*Math.sin(a),z=-state.x*Math.sin(a)+state.z*Math.cos(a);
+    if(state.level===0 && x>41.5 && Math.abs(z)<4.8)changed=progress.complete('screen') || changed;
+    if(changed){updateProgressUI();saveProgress(false);}
+  }
 
   const info = describeLocation(layout, state.theta, state.level);
   hud.setLocation(info);
@@ -221,4 +301,4 @@ function animate() {
 animate();
 
 // Module exports support browser regression checks without a global debug API.
-export { player, hud, layout, camera, renderer, scene };
+export { player, hud, layout, camera, renderer, scene, progress, world };

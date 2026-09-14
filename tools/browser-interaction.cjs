@@ -26,7 +26,30 @@ try {
  await page.keyboard.press('e');await page.waitForFunction(()=>document.getElementById('lore-panel').hidden);
  await page.evaluate(()=>document.exitPointerLock());await page.waitForFunction(()=>!document.getElementById('pause-screen').hidden);
  await page.setViewportSize({width:1100,height:700});await page.waitForTimeout(1000);
+ await page.click('#save-button');
+ const saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('silo18.progress.v1')));
+ assert(saved.progress.completed.includes('record'));assert(saved.progress.completed.includes('gallery'));
+ assert(saved.progress.records.includes('topo'));
+ assert(await page.locator('#pause-status').textContent().then(t=>t.includes('Progresso salvo')));
+ await page.reload();
+ await page.waitForFunction(()=>!document.getElementById('start-button').disabled,null,{timeout:90000});
+ assert.equal(await page.locator('#start-button').textContent(),'Continuar exploração →');
+ const restored=await page.evaluate(async()=>{const {player,progress}=await import('/js/main.js');return {player:player.snapshot(),progress:progress.snapshot()}});
+ for(const key of ['x','y','z','theta','yaw','pitch'])assert(Math.abs(restored.player[key]-saved.player[key])<1e-8,`restored ${key}`);
+ assert.equal(restored.player.level,saved.player.level);assert.deepEqual(restored.progress,saved.progress);
+ await page.click('#start-button');
+ await page.waitForFunction(()=>document.pointerLockElement!==null);
+ assert((await page.locator('#mission-summary').textContent()).includes('Observe o mundo exterior'));
+ await page.screenshot({path:'shots/mission-progress.png'});
+ await page.evaluate(async()=>{
+   const {player}=await import('/js/main.js'),{WING_OFFSETS}=await import('/js/config.js');const a=WING_OFFSETS[0];
+   Object.assign(player.getState(),{x:43*Math.cos(a),z:43*Math.sin(a),y:0,theta:0,level:0});
+ });
+ await page.waitForFunction(()=>document.getElementById('mission-summary').textContent.includes('Missão concluída'));
+ await page.keyboard.press('p');
+ assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('silo18.progress.v1')).progress.completed.length),3);
+ await page.screenshot({path:'shots/mission-complete.png'});
  assert.deepEqual(errors,[]);
- console.log('INTERACTION + BLOOM PASSED: visible plaque, E open/close, reading blocks movement, pause, resize, no runtime errors');
+ console.log('INTERACTION + BLOOM PASSED: visible plaque, E open/close, reading blocks movement, pause, resize, manual save, reload restores position/orientation/objectives, mission completion, no runtime errors');
 } finally {await browser.close()}
 })().catch(e=>{console.error(e);process.exit(1)});

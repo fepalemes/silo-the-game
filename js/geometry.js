@@ -35,3 +35,15 @@ export function appendSweptSolid(data, { start, end, segments, inner, outer, bot
   return data;
 }
 export const meshData = () => ({ positions: [], uvs: [], indices: [] });
+
+// Shared angular endpoints make the tapered rim meet exactly at every tread.
+export function stairSections(slope, stepsPerTurn) {
+  const span=slope.thetaEnd-slope.thetaStart;
+  const count=Math.max(1,Math.round(span/(Math.PI*2/stepsPerTurn)));
+  const rise=Math.abs(slope.yEnd-slope.yStart)/count;
+  return Array.from({length:count+1},(_,i)=>({
+    t:i/count, start:Math.max(slope.thetaStart,slope.thetaStart+span*(i-.5)/count),
+    end:Math.min(slope.thetaEnd,slope.thetaStart+span*(i+.5)/count),
+    y:slope.yStart+(slope.yEnd-slope.yStart)*i/count, thickness:rise+.03, rise,
+  }));
+}

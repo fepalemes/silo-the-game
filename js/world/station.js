@@ -1,8 +1,9 @@
 import * as THREE from "three";
+import { buildResidential } from "./residential.js";
 import { dressGallery, dressBridge, dressEntrance } from "./exemplar.js";
 import { LEVEL_HEIGHT, SECONDARY_WING, WING_OFFSETS, WORLD } from "../config.js";
 import { lerp, scaleHexColor, wrapToPi } from "../mathutils.js";
-import { makePlaqueTexture } from "../textures.js";
+import { makePlaqueTexture, makeSectorMapTexture } from "../textures.js";
 import {
   floorRoughnessFor,
   getFloorSurface,
@@ -112,12 +113,14 @@ function buildStationShell(scene, station, { isFirst, isLast, detailed }) {
   // --- The landing deck: the only place the ring and the stair touch ---
   // Spans the void from the stair's flare out to the ring. The helix is flat
   // across exactly this angular window (see classifyTheta), so the deck and
-  // the treads meet level.
+  // the treads meet level. The window follows the level's own landing bearing:
+  // with a non-integer number of turns per level, that is 60 degrees further
+  // round on every floor rather than always due east.
   addThickSlab(landingGroup, {
     innerR: WORLD.shaftR,
     outerR: WORLD.ringInnerR,
-    thetaStart: -phi,
-    thetaEnd: phi,
+    thetaStart: station.theta - phi,
+    thetaEnd: station.theta + phi,
     thickness: SLAB_THICKNESS,
     topMat: floorMat,
     edgeMat,
@@ -194,7 +197,54 @@ function buildStationShell(scene, station, { isFirst, isLast, detailed }) {
   // Around the ring's inner edge, all the way round except where the landing
   // deck crosses; and down both sides of the deck itself.
   const half = PARAPET_THICKNESS / 2;
-  buildParapet(scene, station.theta, station.theta + TAU, station.y, station.y, () => WORLD.ringInnerR, [{ center: station.theta, halfWidth: phi + 0.02 }, { center: station.theta + TAU, halfWidth: phi + 0.02 }], half);
+  // The inner guard wall opens at the landing and again at every bay - a bay
+  // you cannot walk into is just a shelf.
+  const innerGaps = [
+    { center: station.theta, halfWidth: phi + 0.02 },
+    { center: station.theta + TAU, halfWidth: phi + 0.02 },
+    ...(station.bays || []).flatMap((bay) => [
+      { center: bay.bearing, halfWidth: bay.halfWidth + 0.02 },
+      { center: bay.bearing + TAU, halfWidth: bay.halfWidth + 0.02 },
+      { center: bay.bearing - TAU, halfWidth: bay.halfWidth + 0.02 },
+    ]),
+  ];
+  buildParapet(scene, station.theta, station.theta + TAU, station.y, station.y, () => WORLD.ringInnerR, innerGaps, half);
+
+  // --- Bays: rounded balconies pushed out over the shaft ---------------------
+  // These are the only places on a floor where you can stand past the ring's
+  // edge and look straight up and down the silo.
+  for (const bay of station.bays || []) {
+    const tipR = WORLD.ringInnerR - bay.reach;
+    addThickSlab(landingGroup, {
+      innerR: tipR,
+      outerR: WORLD.ringInnerR + 0.05,
+      thetaStart: bay.bearing - bay.halfWidth,
+      thetaEnd: bay.bearing + bay.halfWidth,
+      thickness: SLAB_THICKNESS,
+      topMat: floorMat,
+      edgeMat,
+      segments: 14,
+      capOuter: false,
+    });
+    // Curved parapet around the tip, standing on its own slab.
+    buildParapet(scene, bay.bearing - bay.halfWidth, bay.bearing + bay.halfWidth, station.y, station.y, () => tipR, [], half);
+    // Radial cheeks closing the two sides back to the ring.
+    for (const side of [-1, 1]) {
+      const a = bay.bearing + side * bay.halfWidth;
+      const midR = (tipR + WORLD.ringInnerR) / 2;
+      addBox(landingGroup, {
+        x: midR * Math.cos(a),
+        y: PARAPET_HEIGHT / 2,
+        z: midR * Math.sin(a),
+        w: WORLD.ringInnerR - tipR,
+        h: PARAPET_HEIGHT,
+        d: PARAPET_THICKNESS,
+        rotY: -a,
+        map: getStructureSurface(),
+        color: 0x8a8578,
+      });
+    }
+  }
   buildDeckParapets(scene, station, phi);
 
   // --- Pillars: instanced, three batches for base / shaft / capital ---
@@ -236,6 +286,10 @@ function buildStationShell(scene, station, { isFirst, isLast, detailed }) {
   landingGroup.add(new THREE.Mesh(buildBandGeometry(WORLD.landingR, 0, TAU, LEVEL_HEIGHT - SLAB_THICKNESS, H, 96, false), wallMat));
   buildCeilingBeams(landingGroup, { y: H - 0.18, innerR: WORLD.ringInnerR, outerR: WORLD.landingR, material: edgeMat });
   const plate = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 0.9), new THREE.MeshBasicMaterial({ map: makePlaqueTexture([String(station.level).padStart(3, "0"), station.generated ? "HABITAÇÕES · SERVIÇOS" : station.name], { bg: 0x34382f, fg: 0xe1d7b7 }), side: THREE.DoubleSide }));
+  if(station.level===1 || station.id==='residencial') {
+    plate.geometry.dispose();plate.geometry=new THREE.PlaneGeometry(.9,1.8);
+    plate.material.map.dispose();plate.material.map=makeSectorMapTexture(station.level,station.name);
+  }
   plate.position.set(WORLD.landingR - 0.36, 1.9, 0);
   plate.rotation.y = -Math.PI / 2;
   landingGroup.add(plate);
@@ -373,6 +427,10 @@ export function buildStation(scene, station, flags, interactables) {
   const wingLabels = ["B", "C"];
   WING_OFFSETS.forEach((offset, i) => {
     const isMain = i === 0;
+    if(station.id==='residencial' && isMain) {
+      buildResidential(scene,station,(station.wingRotation||0)+offset,interactables);
+      return;
+    }
     const roomHalfW = isMain ? station.roomHalfW : SECONDARY_WING.roomHalfW;
     const roomDepth = isMain ? station.roomDepth : SECONDARY_WING.roomDepth;
     const wing = buildWing(scene, station, offset, roomHalfW, roomDepth, wallTex, floorTex, isMain);

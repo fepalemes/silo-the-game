@@ -1,3 +1,4 @@
+import { stairSections } from "../js/geometry.js";
 // Plain-Node regression tests for the layout/collision math (no three.js, no
 // DOM). Run with `npm test`. These exist because the geometry here is easy
 // to get subtly wrong when tuning constants - in particular the headroom
@@ -22,6 +23,7 @@ import {
   zoneForLevel,
 } from "../js/config.js";
 import { classifyTheta, resolveMove, slopeOuterRadius } from "../js/collision.js";
+import { wrapToPi } from "../js/mathutils.js";
 
 let failures = 0;
 function assert(cond, msg) {
@@ -252,13 +254,21 @@ assert(approx(slopeOuterRadius(0.5), WORLD.stairOuterR), "slope radius at t=0.5 
   for (let i = 0; i < layout.stations.length; i++) {
     assert(layout.stations[i].level === i + 1, `level ${i + 1} is numbered correctly`);
   }
-  // All landings share one compass bearing - that is what makes the stair and
-  // the floors agree about where you can step off.
-  let worst = 0;
-  for (const st of layout.stations) {
-    worst = Math.max(worst, Math.abs(Math.atan2(Math.sin(st.theta), Math.cos(st.theta))));
+  // Landings must NOT share a compass bearing: a whole number of turns per
+  // level would stack every walkway on the same side of the shaft, which is
+  // the one thing the production renders never do.
+  const bearing = (st) => Math.atan2(Math.sin(st.theta), Math.cos(st.theta));
+  const step = Math.abs(wrapToPi(layout.stations[1].theta - layout.stations[0].theta));
+  assert(step > 0.3, `consecutive landings are offset around the shaft (${((step * 180) / Math.PI).toFixed(0)} deg apart)`);
+  const distinct = new Set(layout.stations.slice(0, 12).map((st) => Math.round((bearing(st) * 180) / Math.PI)));
+  assert(distinct.size >= 4, `the landing works its way round the shaft (${distinct.size} distinct bearings in the first twelve levels)`);
+  // ...but the offset has to be exact, or the stair and the floor stop agreeing
+  // about where the landing is.
+  for (let i = 1; i < layout.stations.length; i++) {
+    const turns = (layout.stations[i].theta - layout.stations[i - 1].theta) / (Math.PI * 2);
+    assert(Math.abs(turns - TURNS_PER_LEVEL) < 1e-9, `level ${i + 1} is exactly TURNS_PER_LEVEL turns below the one above`);
+    if (i > 3) break;
   }
-  assert(worst < 1e-6, `every landing sits at the same bearing (worst drift ${worst.toExponential(1)} rad)`);
 }
 {
   // Walking outward at an angle NOT aligned with any wing should be stopped
@@ -351,9 +361,14 @@ assert(approx(slopeOuterRadius(0.5), WORLD.stairOuterR), "slope radius at t=0.5 
   // the floor. This is an off-by-one in geometry code the Node tests cannot
   // import (it needs three.js), so guard the boundary in the source itself.
   const stairsSrc = readFileSync(new URL("../js/world/stairs.js", import.meta.url), "utf8");
-  assert(/for \(let i = 0; i <= stepCount; i\+\+\)/.test(stairsSrc), "the tread loop includes the last step, so the flight reaches its landing");
+  for(const slope of buildLayout().slopes) {
+    const sections=stairSections(slope,WORLD.stepsPerTurn);
+    assert(Math.abs(sections.at(-1).end-slope.thetaEnd)<1e-9 && Math.abs(sections.at(-1).y-slope.yEnd)<1e-9,"last tread meets landing");
+    assert(sections.every((s,i)=>i===0 || Math.abs(s.start-sections[i-1].end)<1e-9),"adjacent tread angular edges match");
+    assert(sections.every(s=>s.thickness>s.rise),"actual tread rise is covered by solid thickness");
+  }
   assert(stairsSrc.includes("appendSweptSolid(data"), "treads are curved solid wedges");
-  assert(/"coping"/.test(stairsSrc), "the stair parapet is finished in concrete, not a metal rail");
+  assert(/"handrail"/.test(stairsSrc), "stair finish follows the metal handrails documented in set photographs");
 
   // The facade stack has no gaps left to cover: the decorative "filler" levels
   // are gone, because all 148 levels are real floors now. What replaced that

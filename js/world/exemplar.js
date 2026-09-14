@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { WORLD } from '../config.js';
+import { WORLD, PARAPET_THICKNESS } from '../config.js';
 import { makePlaqueTexture, mulberry32 } from '../textures.js';
 import { workshopMaterial } from './materials.js';
 
@@ -165,6 +165,27 @@ export function dressBridge(group) {
     saddle.rotation.y=-side*phi;
     for(const offset of [-.06,.06])mesh(group,new THREE.CylinderGeometry(.025,.025,.025,6),m.brass,x+offset,1.116,z);
   }
+  // Pour joints and runoff sit on the inside face of the existing concrete
+  // parapet. A shared batch keeps this detail cheap and outside the aisle.
+  const joints = new THREE.InstancedMesh(new THREE.PlaneGeometry(.012,.97),
+    new THREE.MeshStandardMaterial({color:0x514e42,roughness:1,side:THREE.DoubleSide}),8);
+  joints.name='bridge-pour-joints';
+  const dummy=new THREE.Object3D();let index=0;
+  for(const side of [-1,1])for(let i=0;i<4;i++) {
+    const r=WORLD.hubR+1+i*2;
+    const face=new THREE.Group();
+    const inset=PARAPET_THICKNESS+.004;
+    face.position.set(r*Math.cos(phi)+inset*Math.sin(phi),0,side*(r*Math.sin(phi)-inset*Math.cos(phi)));
+    face.rotation.y=-side*phi;group.add(face);
+    dummy.position.copy(face.position);dummy.position.y=.51;
+    dummy.rotation.set(0,-side*phi,0);dummy.updateMatrix();
+    joints.setMatrixAt(index++,dummy.matrix);
+    const runoff=wallWear(face,.46,.83,.1,.6,0,i);
+    runoff.material.opacity=.42;
+    runoff.rotation.y=side>0?Math.PI:0;
+  }
+  joints.instanceMatrix.needsUpdate=true;joints.receiveShadow=true;
+  joints.raycast=()=>{};group.add(joints);
   const arrow=sign(group,['CAFETERIA →','NÍVEL 01'],1.25,.32,10.5,.019,0);
   arrow.rotation.x=-Math.PI/2;arrow.rotation.z=Math.PI/2;arrow.material.transparent=true;arrow.material.opacity=.55;
   arrow.raycast=()=>{};

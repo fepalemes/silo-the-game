@@ -91,3 +91,45 @@ o caminho da escada à cafeteria, a imagem, o fallback e o orçamento de luzes.
 A câmera `?view=entrada&hud=0` enquadra o acesso principal à cafeteria.
 A iluminação indireta continua aproximada: não foi implementada iluminação
  global ou sombras de todas as fontes pontuais.
+
+### Escadas e passarela — 14/09/2026
+
+As imagens `silo-2.jpg`, `silo-3.jpeg` e `silo-6.jpeg` orientam a continuidade
+dos parapeitos de concreto e o acabamento gasto da circulação. O mapeamento
+dos degraus agora varia por peça, sem alterar a escala da textura, para reduzir
+a repetição das mesmas fissuras. Os dois primeiros trechos têm bordas claras
+desgastadas e dois insertos estreitos de acabamento antiderrapante. Esses
+insertos são interpretação visual para o jogo, não um detalhe confirmado da série.
+
+A passarela do nível 1 ganhou juntas de concretagem e marcas localizadas de
+escorrimento na face interna dos parapeitos. As juntas usam um único lote
+instanciado. Os detalhes ficam sobre as superfícies existentes, preservando
+a largura da passagem e o perfil de colisão da escada; nenhuma luz foi adicionada.
+
+## Primeira ala residencial e continuidade estrutural
+
+O nível 28 recebeu três apartamentos, lavanderia, depósito e oficina, ligados
+por corredor principal de 4,4 m. As referências locais `silo-13` a `silo-16`
+orientam a faixa terracota, a madeira, o mobiliário e a luz quente. A planta,
+numeração dos apartamentos e distribuição dos serviços são autorais.
+
+Os três apartamentos compartilham a planta de estar/cozinha, quarto e banheiro,
+com variação de cama e tecidos; ainda não são três plantas arquitetônicas
+independentes. As portas abrem instantaneamente com E, têm colisão nos dois
+estados e persistem no save. Animação interpolada, NPCs e sons locais continuam
+pendentes. O restante das alas residenciais conserva o acabamento anterior.
+
+Na escada, cada degrau agora calcula o raio externo nas bordas compartilhadas,
+em vez de usar o raio fixo do centro. A espessura acompanha a queda real por
+degrau e uma base helicoidal contínua fecha a parte inferior. A inspeção deve
+continuar distinguindo frestas involuntárias do vazio central da arquitetura.
+
+## Correções com new-references
+
+A análise das 101 novas imagens está em [catálogo e decisões](catalogo-new-references.md).
+As fotografias de set corrigem a interpretação anterior de parapeitos sem tubo:
+foram adicionados corrimãos elevados com apoios na escada. Os apartamentos têm
+variações de cor e painéis nas portas. Os níveis 1 e 28 receberam mapas autorais
+esquemáticos com destinos reais do jogo, seguindo a linguagem gráfica observada.
+Cafeteria circular, becos residenciais, domo e organização dos departamentos
+continuam como revisões arquitetônicas pendentes, agora fundamentadas no conjunto.

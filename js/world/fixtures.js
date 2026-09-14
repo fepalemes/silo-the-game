@@ -131,7 +131,7 @@ export function buildRingDoors(group, doors, { wallColor, accentColor }) {
     const plate = new THREE.Mesh(plateGeo, platePool[i % platePool.length]);
     const r = d.r - 0.07;
     plate.position.set(r * Math.cos(d.theta), 2.45, r * Math.sin(d.theta));
-    plate.rotation.y = Math.PI / 2 - d.theta;
+    plate.rotation.y = -Math.PI / 2 - d.theta; // read from inside the ring, not mirrored
     group.add(plate);
   });
 }
@@ -201,9 +201,8 @@ export function addPorthole(group, { r, theta, y }) {
 // `cap` is what finishes the top of the wall:
 //   "rail"   - a thin dark metal bar, for the hall guard walls.
 //   "coping" - a cast concrete coping, slightly proud of the wall on both
-//              faces. The stairs use this: in the references the stairwell is
-//              one continuous poured-concrete edge, with no pipe running along
-//              the top of it.
+//              faces. Kept for plain concrete finishes.
+//   "handrail" - raised pipe and brackets, confirmed by the supplied set photos.
 export function buildParapet(scene, thetaStart, thetaEnd, yStart, yEnd, radiusFn, gaps = [], inset = 0, cap = "rail") {
   const wallR = (t) => radiusFn(t) + inset;
   const spans = splitAngleRangeByGaps(thetaStart, thetaEnd, gaps);
@@ -215,6 +214,17 @@ export function buildParapet(scene, thetaStart, thetaEnd, yStart, yEnd, radiusFn
     const shape = { start: span.start, end: span.end, segments: Math.max(2, Math.ceil((span.end - span.start) / 0.045)) };
     appendSweptSolid(wall, { ...shape, inner: (t) => radius(t) - PARAPET_THICKNESS / 2, outer: (t) => radius(t) + PARAPET_THICKNESS / 2, bottom: (t) => y(t) - 0.22, top: (t) => y(t) + PARAPET_HEIGHT });
     if (cap === "coping") appendSweptSolid(coping, { ...shape, inner: (t) => radius(t) - PARAPET_THICKNESS / 2 - 0.035, outer: (t) => radius(t) + PARAPET_THICKNESS / 2 + 0.035, bottom: (t) => y(t) + PARAPET_HEIGHT, top: (t) => y(t) + PARAPET_HEIGHT + COPING_HEIGHT });
+    if (cap === "handrail") {
+      const curve=new HelixCurve(span.start,span.end,y(0),y(1),PARAPET_HEIGHT+.16,radius);
+      const rail=new THREE.Mesh(new THREE.TubeGeometry(curve,shape.segments,.043,8,false),getCapRailMat());
+      rail.name='stair-handrail';scene.add(rail);
+      const count=Math.max(1,Math.ceil((span.end-span.start)*radius(.5)/1.8));
+      const brackets=Array.from({length:count+1},(_,i)=>{
+        const t=i/count,a=lerp(span.start,span.end,t),r=radius(t);
+        return {x:r*Math.cos(a),y:y(t)+PARAPET_HEIGHT+.08,z:r*Math.sin(a)};
+      });
+      addInstancedBatch(scene,new THREE.CylinderGeometry(.018,.018,.16,6),getCapRailMat(),brackets);
+    }
     if (cap === "rail") {
       const curve = new HelixCurve(span.start, span.end, y(0), y(1), PARAPET_HEIGHT + 0.03, (t) => radius(t));
       scene.add(new THREE.Mesh(new THREE.TubeGeometry(curve, shape.segments, 0.035, 6, false), getCapRailMat()));

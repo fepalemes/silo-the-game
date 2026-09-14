@@ -126,5 +126,6 @@ export function createPlayer({ camera, domElement, layout, initialState, onLockC
     requestLock,
     setSuspended: (value) => { suspended = value; clearKeys(); },
     getState: () => state,
+    snapshot: () => ({ x: state.x, y: state.y, z: state.z, theta: state.theta, level: state.level, yaw, pitch }),
   };
 }

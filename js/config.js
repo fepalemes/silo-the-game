@@ -60,8 +60,17 @@ export const WORLD = {
 // Floor-to-floor height of a numbered level, from the same 3D cutaway.
 // risePerTurn * TURNS_PER_LEVEL must equal this, or the stair stops agreeing
 // with the level numbering painted on it.
-export const LEVEL_HEIGHT = 7.6;
-export const TURNS_PER_LEVEL = 2;
+// A whole number of turns per level puts every landing at the same compass
+// bearing, so the stair meets all 148 floors on the same side and the descent
+// reads as one repeated picture. The production renders show the opposite: the
+// walkway swings round the shaft as it goes down. The extra sixth of a turn
+// rotates each landing 60 degrees from the one above - the same 60 degrees the
+// 3D cutaway alternates its landings by.
+//
+// The stair's own geometry is untouched by this (risePerTurn and stepsPerTurn
+// both stay put); what moves is the level height, from 7.6m to 8.23m.
+export const TURNS_PER_LEVEL = 13 / 6;
+export const LEVEL_HEIGHT = 3.8 * TURNS_PER_LEVEL;
 
 export const PARAPET_HEIGHT = 1.05;
 // Guard walls are inset by half of this so their footprint sits entirely on
@@ -523,17 +532,25 @@ export function buildLayout() {
     ...s,
     index: i,
     zone: zoneForLevel(s.level).name,
-    // The helix turns exactly TURNS_PER_LEVEL times between one level and the
-    // next, so every landing sits at the same compass bearing. That is simply
-    // what an integer-turns-per-floor spiral stair does, and it is what lets
-    // the player step off at any level without the stair and the floor
-    // disagreeing about where the landing is.
+    // The helix turns TURNS_PER_LEVEL times between one level and the next.
+    // That is deliberately not a whole number, so each landing sits 60 degrees
+    // round from the one above and the stair works its way around the shaft as
+    // it descends.
     theta: i * TURNS_PER_LEVEL * TAU,
     y: -i * LEVEL_HEIGHT,
     // Rotates each level's rooms around the ring so 148 floors are not 148
     // copies of the same silhouette. The landing itself cannot move (the
     // helix decides where that is), but what the ring is furnished with can.
     wingRotation: (i % 6) * (Math.PI / 3) + (i % 2) * 0.18,
+    // Bays bulging off the ring into the shaft. In the production renders the
+    // floors are not clean circles: rounded balconies push out over the void,
+    // and they are where you stand to look up and down the silo. Bearings are
+    // offset per level so they do not stack into a column.
+    bays: [1.9, 4.15].map((a, k) => ({
+      bearing: i * TURNS_PER_LEVEL * TAU + a + (i % 3) * 0.37 + k * 0.11,
+      halfWidth: 0.19,
+      reach: 2.4,
+    })),
   }));
 
   const slopes = [];

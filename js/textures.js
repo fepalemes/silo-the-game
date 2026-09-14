@@ -415,6 +415,104 @@ export function makePlaqueTexture(lines, { width = 512, height = 256, bg = 0x101
 }
 
 // Hazy dead-world backdrop for the "Topo" viewport screen.
+// Public-safety and wayfinding signs, drawn to the grammar of the production's
+// own sign sheet: heavy condensed caps, a rule under the headline on the red
+// notices, and a small letterspaced footer naming the issuing office. Three
+// plate treatments cover everything seen in the references.
+//
+// Cached by content, not by call site. The same four notices repeat on every
+// landing of a 148-level silo, and one canvas per instance is exactly the
+// texture proliferation that has cost this project load time before.
+const SIGN_PLATES = {
+  light: { bg: 0xd8d4cc, fg: 0x1b1d1e, rule: 0xb5322a, border: 0x6d6a63 },
+  red: { bg: 0xb5322a, fg: 0xf0ece4, rule: 0xf0ece4, border: 0x8d2820 },
+  dark: { bg: 0x2f3437, fg: 0xcfc9bd, rule: 0xcfc9bd, border: 0x4a5053 },
+  teal: { bg: 0x1d3a3c, fg: 0xe2d4b1, rule: 0xe2d4b1, border: 0x2c5154 },
+};
+const signCache = new Map();
+
+function drawSpacedText(ctx, text, x, y, spacing, maxWidth) {
+  if (!spacing) {
+    ctx.fillText(text, x, y, maxWidth);
+    return;
+  }
+  const chars = [...text];
+  const widths = chars.map((c) => ctx.measureText(c).width);
+  const total = widths.reduce((a, b) => a + b, 0) + spacing * (chars.length - 1);
+  const scale = maxWidth && total > maxWidth ? maxWidth / total : 1;
+  const prevAlign = ctx.textAlign;
+  ctx.textAlign = "left";
+  ctx.save();
+  ctx.translate(x - (total * scale) / 2, y);
+  ctx.scale(scale, 1);
+  let cx = 0;
+  chars.forEach((c, i) => {
+    ctx.fillText(c, cx, 0);
+    cx += widths[i] + spacing;
+  });
+  ctx.restore();
+  ctx.textAlign = prevAlign;
+}
+
+export function makeSignTexture({ kind = "light", headline, lines = [], footer = null, spacing = 0, width = 512, height = 320 } = {}) {
+  const key = JSON.stringify({ kind, headline, lines, footer, spacing, width, height });
+  if (signCache.has(key)) return signCache.get(key);
+
+  const plate = SIGN_PLATES[kind] || SIGN_PLATES.light;
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+
+  ctx.fillStyle = toRgbString(plate.bg);
+  ctx.fillRect(0, 0, width, height);
+  ctx.strokeStyle = toRgbString(plate.border);
+  ctx.lineWidth = Math.max(3, height * 0.018);
+  ctx.strokeRect(ctx.lineWidth, ctx.lineWidth, width - ctx.lineWidth * 2, height - ctx.lineWidth * 2);
+
+  ctx.fillStyle = toRgbString(plate.fg);
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+
+  const pad = width * 0.07;
+  const inner = width - pad * 2;
+  // Headline takes whatever vertical room the body and footer leave it.
+  const bodyCount = lines.length;
+  const headSize = Math.floor(height * (bodyCount > 1 ? 0.26 : bodyCount ? 0.32 : 0.42));
+  const bodySize = Math.floor(height * (bodyCount > 2 ? 0.13 : 0.16));
+  const footSize = Math.floor(height * 0.062);
+
+  let y = footer ? height * 0.14 : height * 0.17;
+  if (headline) {
+    ctx.font = `800 ${headSize}px "Helvetica Neue", Helvetica, Arial, sans-serif`;
+    y = bodyCount ? height * 0.2 : height * 0.44;
+    drawSpacedText(ctx, headline, width / 2, y, spacing * headSize, inner);
+    if (kind === "red" && bodyCount) {
+      // The red notices carry a rule under the headline.
+      const ruleY = y + headSize * 0.62;
+      ctx.fillRect(pad, ruleY, inner, Math.max(2, height * 0.012));
+    }
+    y += headSize * (kind === "red" ? 0.95 : 0.85);
+  }
+
+  ctx.font = `700 ${bodySize}px "Helvetica Neue", Helvetica, Arial, sans-serif`;
+  for (const line of lines) {
+    drawSpacedText(ctx, line, width / 2, y, 0, inner);
+    y += bodySize * 1.2;
+  }
+
+  if (footer) {
+    ctx.font = `600 ${footSize}px "Helvetica Neue", Helvetica, Arial, sans-serif`;
+    drawSpacedText(ctx, footer, width / 2, height - footSize * 1.5, footSize * 0.18, inner);
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 8;
+  signCache.set(key, tex);
+  return tex;
+}
+
 export function makeWastelandTexture({ size = 512, seed = 7 } = {}) {
   const canvas = makeCanvas(size);
   const ctx = canvas.getContext("2d");
@@ -500,4 +598,28 @@ export function makeWorkshopSurface(kind, { size = 256, seed = 83 } = {}) {
   const roughnessMap = new THREE.CanvasTexture(rough);
   roughnessMap.wrapS = roughnessMap.wrapT = THREE.RepeatWrapping;
   return { map: finishColorTexture(canvas), normalMap: makeNormalMapFromHeight(height, 1.3), roughnessMap };
+}
+
+// Original, game-specific sector diagram inspired by the set's transit maps.
+// Labels describe playable destinations, not a copied or purported official map.
+export function makeSectorMapTexture(level, name) {
+  const canvas=document.createElement('canvas');canvas.width=384;canvas.height=768;
+  const c=canvas.getContext('2d');
+  c.fillStyle='#424b46';c.fillRect(0,0,384,768);
+  c.fillStyle=level<50?'#777b63':'#64717c';c.fillRect(0,0,384,185);
+  c.textAlign='center';c.fillStyle='#eee5cb';c.font='bold 120px Arial';c.fillText(String(level).padStart(2,'0'),192,135);
+  c.font='17px Arial';c.fillText(name.toUpperCase(),192,222);
+  c.strokeStyle='#d1c9ac';c.lineWidth=3;
+  c.beginPath();c.moveTo(192,275);c.lineTo(192,640);c.stroke();
+  const labels=level===28?['APARTAMENTOS','LAVANDERIA','DEPÓSITO','OFICINA']:['CAFETERIA','GALERIA','SERVIÇOS'];
+  labels.forEach((label,i)=>{
+    const y=310+i*80,right=i%2===0,x=right?304:80;
+    c.beginPath();c.moveTo(192,y);c.lineTo(x,y);c.stroke();
+    for(const px of [192,x]){c.beginPath();c.arc(px,y,6,0,Math.PI*2);c.fill();}
+    c.font='14px Arial';c.textAlign=right?'right':'left';c.fillText(label,right?355:28,y-17);
+  });
+  c.textAlign='center';c.fillStyle='#e1b56d';c.beginPath();c.arc(192,659,8,0,Math.PI*2);c.fill();
+  c.font='15px Arial';c.fillText('ACESSO PELA ESCADARIA',192,700);
+  c.fillStyle='#b8b99f';c.font='12px Arial';c.fillText('SILO 18 / ROTAS DO SETOR',192,740);
+  const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;return texture;
 }

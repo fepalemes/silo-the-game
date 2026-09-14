@@ -1,10 +1,12 @@
 // Static geometry is grouped by elevation. A fixed light pool keeps shader
 // cost independent of the 148 floors and avoids recompilation during travel.
 import * as THREE from "three";
+import { WING_OFFSETS, WORLD } from "../config.js";
 import { createLightPool } from "../lightpool.js";
 import { buildTransit } from "./stairs.js";
 import { buildCentralPole, buildOuterShell, buildServiceRisers } from "./scenery.js";
 import { buildStation } from "./station.js";
+import { buildSafetySigns } from "./signs.js";
 
 export function buildWorld(scene, layout) {
   const structure = new THREE.Group();
@@ -28,6 +30,16 @@ export function buildWorld(scene, layout) {
     scene.add(group);
     chunks.push({ group, y: station.y });
   });
+  // Signage spans every level, so it is one instanced batch per notice rather
+  // than meshes inside the per-elevation chunks: 592 quads that are never
+  // culled still cost less than 592 objects that are.
+  buildSafetySigns(scene, layout, {
+    radius: WORLD.landingR,
+    // Generated levels have an unbroken ring wall; only the authored ones cut
+    // doorways for their wings.
+    doorways: (station) => (station.generated ? [] : WING_OFFSETS.map((o) => (station.wingRotation || 0) + o)),
+  });
+
   scene.updateMatrixWorld(true);
   const sources = [];
   const shadowLights = [];

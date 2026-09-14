@@ -1,3 +1,4 @@
+import { inResidential } from "./residential-layout.js";
 import { SECONDARY_WING, WING_OFFSETS, WORLD } from "./config.js";
 import { clamp, lerp, lerpHexColor, unwrapAngleNear, wrapToPi } from "./mathutils.js";
 
@@ -49,6 +50,14 @@ export function surfaceY(layout, theta) {
   return lerp(zone.slope.yStart, zone.slope.yEnd, zone.t);
 }
 
+// Deepest reach of any bay on this level, so positions far inside the void are
+// rejected before the per-bay test runs.
+function maxBayReach(station) {
+  let max = 0;
+  for (const bay of station.bays || []) if (bay.reach > max) max = bay.reach;
+  return max;
+}
+
 // Is the player within one of this level's wings (corridor or room)? Wings
 // hang off the ring at any bearing now, so this is pure 2D geometry in the
 // wing's own frame.
@@ -63,6 +72,10 @@ function resolveInWing(station, px, pz) {
     const sin = Math.sin(angle);
     const lx = px * cos + pz * sin; // outward along this wing's corridor
     const lz = -px * sin + pz * cos; // sideways
+    if (station.id === 'residencial' && i === 0) {
+      if(inResidential(lx,lz))return true;
+      continue;
+    }
     const roomHalfW = i === 0 ? station.roomHalfW : SECONDARY_WING.roomHalfW;
     const roomDepth = i === 0 ? station.roomDepth : SECONDARY_WING.roomDepth;
 
@@ -123,7 +136,19 @@ function resolveStep(layout, prevState, moveX, moveZ) {
         return Math.hypot(Math.max(0, Math.abs(x) - o.hw), Math.max(0, Math.abs(z) - o.hd)) < pr;
       })) return null;
       const onRing = r >= WORLD.ringInnerR + pr && r <= WORLD.landingR - pr;
-      if (onRing || resolveInWing(station, px, pz)) {
+      // Bays hang off the ring's inner edge over the void. Inside one, the
+      // floor simply reaches further in - the angular clearance has to shrink
+      // with radius or the player's shoulders clip the parapet at the tip.
+      const inBay =
+        !onRing &&
+        r < WORLD.ringInnerR + pr &&
+        r >= WORLD.ringInnerR - maxBayReach(station) + pr &&
+        (station.bays || []).some((bay) => {
+          if (r < WORLD.ringInnerR - bay.reach + pr) return false;
+          const slack = bay.halfWidth - Math.asin(Math.min(1, pr / Math.max(pr, r)));
+          return slack > 0 && Math.abs(wrapToPi(bearing - wrapToPi(bay.bearing - station.theta))) < slack;
+        });
+      if (onRing || inBay || resolveInWing(station, px, pz)) {
         return { x: px, y: station.y, z: pz, theta: station.theta, level };
       }
 

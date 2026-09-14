@@ -288,3 +288,16 @@ button:focus-visible { outline: 2px solid #faf0cd; outline-offset: 5px; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 .panel h1 { font-family: Georgia, serif; font-weight: normal; font-size: clamp(80px, 12vw, 150px); letter-spacing: .17em; line-height: .9; margin: 0 0 20px; }
 @media (max-height: 720px) { .panel h1 { font-size: 80px; } }
+
+#mission-panel { position:absolute;top:24px;left:30px;width:min(340px,calc(100vw - 70px));padding:16px 18px;background:#101812e8;border-left:2px solid #bcae86; }
+#mission-panel .eyebrow { margin-bottom:10px;font-size:9px; }
+#mission-summary { font-size:13px;line-height:1.5;color:#ece3c7; }
+#mission-steps { list-style:none;padding:0;margin:12px 0;font-size:11px;line-height:1.8;color:#a7aa9a; }
+#mission-steps .current { color:#eed29a; }
+#mission-steps .done { color:#a8c1a1; }
+#mission-hint { font:12px/1.5 system-ui,sans-serif;color:#c8c9b9;margin:0; }
+#save-notice { position:absolute;right:30px;bottom:28px;font-size:10px;max-width:260px;line-height:1.5;background:#101812dd;padding:8px 12px; }
+button.secondary { margin-top:12px;background:transparent;color:#d8caac; }
+button.secondary:hover { color:#1c241e; }
+@media(max-height:600px) { #mission-panel { top:12px;padding:10px 14px; } #mission-steps { margin:5px 0; } #mission-panel .eyebrow { display:none; } }
+@media(max-width:650px) { #mission-panel { left:15px; } #save-notice { right:15px;bottom:10px;max-width:170px; } #level-info { left:15px;bottom:52px; } #pause-screen .panel { padding:24px; } }

@@ -7,8 +7,12 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "test": "node test/layout.test.mjs && node test/player.test.mjs && node test/lightpool.test.mjs",
+    "test": "node test/layout.test.mjs && node test/player.test.mjs && node test/lightpool.test.mjs && node test/progress.test.mjs && node test/residential.test.mjs",
     "test:exemplar": "node tools/exemplar-check.cjs",
-    "test:browser": "node tools/browser-check.cjs && node tools/browser-interaction.cjs"
+    "test:browser": "node tools/browser-check.cjs && node tools/browser-interaction.cjs",
+    "test:residential": "node tools/residential-check.cjs"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.63.0"
   }
 }
