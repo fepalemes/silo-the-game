@@ -23,11 +23,13 @@ const MIME = {
 };
 
 const server = http.createServer((req, res) => {
-  let urlPath = decodeURIComponent(req.url.split("?")[0]);
+  let urlPath;
+  try { urlPath = decodeURIComponent(req.url.split("?")[0]); }
+  catch { res.writeHead(400); res.end("Endereço inválido"); return; }
   if (urlPath === "/") urlPath = "/index.html";
 
   const filePath = path.normalize(path.join(__dirname, urlPath));
-  if (!filePath.startsWith(__dirname)) {
+  if (!filePath.startsWith(__dirname + path.sep)) {
     res.writeHead(403, { "Content-Type": "text/plain; charset=utf-8" });
     res.end("Proibido");
     return;
@@ -46,5 +48,5 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`Silo rodando em http://localhost:${PORT}`);
+  console.log(`Silo rodando em http://localhost:${server.address().port}`);
 });

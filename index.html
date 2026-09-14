@@ -15,9 +15,10 @@
     </script>
   </head>
   <body>
-    <canvas id="game-canvas"></canvas>
+    <canvas id="game-canvas" aria-label="Exploração tridimensional do Silo 18"></canvas>
+    <div id="vignette" aria-hidden="true"></div>
 
-    <div id="hud">
+    <div id="hud" hidden>
       <div id="crosshair"></div>
 
       <div id="level-info">
@@ -29,40 +30,49 @@
       <div id="depth-bar">
         <span class="depth-label">1</span>
         <div id="depth-track"><div id="depth-marker"></div></div>
-        <span class="depth-label">144</span>
+        <span class="depth-label">148</span>
       </div>
 
       <div id="interact-prompt" hidden>[E] examinar registro</div>
 
       <div id="lore-panel" hidden>
         <div id="lore-title"></div>
-        <p id="lore-body"></p>
+        <div id="lore-body"></div>
         <div class="lore-hint">[E] fechar</div>
       </div>
     </div>
 
     <div id="start-screen">
+      <div class="silo-emblem" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
       <div class="panel">
+        <div class="eyebrow">SILO 18 / ARQUIVO DE EXPLORAÇÃO</div>
         <h1>SILO</h1>
-        <p class="tagline">uma descida não oficial de exploração, inspirada na estética da série da Apple TV+</p>
+        <p class="chapter">A DESCIDA</p>
+        <p class="tagline">Tudo o que resta do mundo está aqui embaixo.</p>
+        <p class="intro">Percorra a escadaria, atravesse as galerias e descubra os registros de uma vida sob o concreto.</p>
         <div class="controls">
           <div><b>W A S D</b><span>mover</span></div>
-          <div><b>Mouse</b><span>olhar em volta</span></div>
+          <div><b>Mouse</b><span>olhar</span></div>
           <div><b>Shift</b><span>correr</span></div>
-          <div><b>E</b><span>examinar registros</span></div>
+          <div><b>E</b><span>ler / fechar registro</span></div>
+          <div><b>M</b><span>som ligado / desligado</span></div>
           <div><b>Esc</b><span>pausar</span></div>
         </div>
-        <div class="cta">clique para começar a descida</div>
+        <button id="start-button" class="cta" disabled>Preparando a descida…</button>
+        <p id="status" role="status">Construindo as galerias e a escadaria.</p>
+        <p class="credit">Experiência de fã não oficial, inspirada em Silo, da Apple TV.</p>
       </div>
+      <div class="menu-footer"><span>144 NÍVEIS · UM MUNDO FECHADO</span><span>EXPLORAÇÃO LIVRE</span></div>
     </div>
-
     <div id="pause-screen" hidden>
       <div class="panel">
-        <h2>Pausado</h2>
-        <p>Clique para continuar a descida.</p>
+        <div class="eyebrow">SILO 18 / EXPLORAÇÃO</div>
+        <h2>Uma pausa na descida.</h2>
+        <p>Seu lugar está aqui. Continue quando quiser.</p>
+        <button id="resume-button" class="cta">Continuar →</button>
+        <p id="pause-status" role="status"></p>
       </div>
     </div>
-
-    <script type="module" src="js/main.js"></script>
+    <script type="module" src="js/boot.js"></script>
   </body>
 </html>

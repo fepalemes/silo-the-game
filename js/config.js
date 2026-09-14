@@ -1,3 +1,5 @@
+import { lerpHexColor } from "./mathutils.js";
+
 // ---------------------------------------------------------------------------
 // Core tunables. Distances are in meters, angles in radians.
 // ---------------------------------------------------------------------------
@@ -27,37 +29,73 @@ export const WORLD = {
   fillerSpacing: 3.9,
   // Angular half-width of each station's flat hall. This wraps most of the
   // way around the shaft (like a real atrium balcony), but NOT all the way
-  // to PI: since the spiral stair passes through the same compass direction
-  // once per full turn, a hall any wider leaves too little of that turn left
-  // over for the stair to actually gain height - the tread directly "one
-  // turn up" ends up only ~1.2m above the floor and the player's head clips
-  // through it. 2.5 rad (~286 degrees of hall) keeps a safe ~2.6m of
-  // clearance everywhere; see the headroom check in test/layout.test.mjs.
-  plateauHalfAngle: 2.5,
-  risePerTurn: 10, // meters descended per full 360 degree turn of stairs
-  stepsPerTurn: 56,
+  // Half-width of the flat landing where the stair meets a level's floor.
+  // This used to be `plateauHalfAngle` at 1.2-2.5 rad: a whole floor's hall
+  // was one flat plateau, which is why the hall could never be more than a
+  // fraction of the circle (see the clearance formula below) and why only a
+  // dozen levels could exist. Now the helix runs continuously past every
+  // level and only pauses for a real landing, the same +-15.5 degrees the 3D
+  // cutaway uses. The ring floors are separate surfaces, walkable all 360.
+  //
+  //     clearance over a landing = (2*PI - 2*phi) * risePerTurn / (2*PI)
+  //
+  // At 0.27 rad that leaves ~3.5m, against 0.78m at the old 1.2 rad.
+  landingHalfAngle: 0.27,
+  // Both taken from the interactive 3D cutaway (3dscenes.qualityf2p.workers.dev
+  // /silo), whose stair is the most precise reference we have: it runs exactly
+  // 2 turns per 7.6m level on 44 steps, i.e. 22 steps and 3.8m per turn. That
+  // gives a 0.173m rise (ours was already 0.179m - the riser was never the
+  // problem) but a 1.0m going instead of 0.44m. 56 steps per turn was making a
+  // grand spiral stair read as a cramped winder.
+  risePerTurn: 3.8, // meters descended per full 360 degree turn of stairs
+  stepsPerTurn: 22,
   playerRadius: 0.35,
   eyeHeight: 1.65,
   roomHeight: 3.4,
 };
 
-// Every station has its main themed room (offset 0, using STATIONS[i].propType)
-// plus a couple of smaller generic wings branching off the same hall, so each
-// floor has more than one door/corridor to look at. Purely decorative doors
-// are scattered along the rest of the ring wall (see world.js).
-export let WING_OFFSETS = [0, 2.15, -2.15];
+// --- Construction dimensions -------------------------------------------------
+// Used by js/world/* (re-exported through primitives.js) and asserted against
+// each other in test/layout.test.mjs.
+// Floor-to-floor height of a numbered level, from the same 3D cutaway.
+// risePerTurn * TURNS_PER_LEVEL must equal this, or the stair stops agreeing
+// with the level numbering painted on it.
+export const LEVEL_HEIGHT = 7.6;
+export const TURNS_PER_LEVEL = 2;
+
+export const PARAPET_HEIGHT = 1.05;
+// Guard walls are inset by half of this so their footprint sits entirely on
+// the slab they guard - centred on the rim, half the wall cantilevers over
+// the void and reads as a floating lip from the far side of the shaft.
+export const PARAPET_THICKNESS = 0.22;
+// Every walkable floor is a real slab this thick, not a zero-thickness
+// surface - the fascia is what you actually see from across the void.
+export const SLAB_THICKNESS = 0.55;
+// Ring walls are structural concrete, not partitions.
+export const WALL_THICKNESS = 0.55;
+
+
+// Wings branch off a level's ring at these angles, measured from the level's
+// landing. Now that the ring is a real 360-degree floor rather than a flat
+// plateau spanning a fraction of a turn, these can go anywhere around the
+// circle - they no longer have to squeeze inside the landing's angular span.
+// They are deliberately offset by half a step so none of them sits on top of
+// the landing itself.
+export let WING_OFFSETS = evenlySpacedWings(3);
+
+function evenlySpacedWings(count) {
+  const TAU = Math.PI * 2;
+  if (count <= 1) return [Math.PI];
+  const step = TAU / count;
+  return Array.from({ length: count }, (_, i) => step * (i + 0.5));
+}
 
 // Rebuilds WING_OFFSETS with `count` evenly spaced wings. Exported so the
 // cost of denser floors can be measured (?wings=N) before committing to it.
 export function setWingCount(count) {
-  const span = WORLD.plateauHalfAngle - 0.35;
-  if (count <= 1) {
-    WING_OFFSETS = [0];
-    return;
-  }
-  const step = (span * 2) / count;
-  WING_OFFSETS = Array.from({ length: count }, (_, i) => -span + step * (i + 0.5));
+  WING_OFFSETS = evenlySpacedWings(Number.isFinite(count) ? Math.max(1, Math.min(8, Math.round(count))) : 3);
 }
+
 export const SECONDARY_WING = {
   roomHalfW: 3.2,
   roomDepth: 7,
@@ -72,22 +110,21 @@ export const PLAYER_SPEED = {
 // Vertical zoning, straight from the structural cutaway reference: which
 // band of the silo each level number belongs to. Used for HUD context and
 // to sanity-check that each station sits in the right band.
+// Four bands, matching the 3D cutaway and the names the show itself uses.
+// This replaces a five-band split read off silo-layout.JPG; where the two
+// references disagreed, the 3D map won.
 export const ZONES = [
-  { name: "SILO SUPERIOR", from: 1, to: 20 },
-  { name: "SUPERIOR-MÉDIO", from: 21, to: 50 },
-  { name: "SILO MÉDIO", from: 51, to: 80 },
-  { name: "MÉDIO-INFERIOR", from: 81, to: 120 },
-  { name: "FUNDO DO SILO", from: 121, to: 144 },
+  { name: "SILO SUPERIOR", from: 1, to: 49 },
+  { name: "OS MÉDIOS", from: 50, to: 119 },
+  { name: "FUNDO DO SILO", from: 120, to: 144 },
+  { name: "ABAIXO", from: 145, to: 148 },
 ];
 
 export function zoneForLevel(level) {
   return ZONES.find((z) => level >= z.from && level <= z.to) || ZONES[ZONES.length - 1];
 }
 
-// Turns of stairs between each pair of consecutive stations (length = STATIONS.length - 1).
-// Keep every entry >= 2: smaller values steepen the helix enough to break the
-// headroom clearance checked in test/layout.test.mjs.
-export const TRANSIT_TURNS = [2, 2, 2, 2, 2, 2, 2, 2, 2, 2.5, 3, 2];
+
 
 // The twelve hand-built floors, ordered top -> bottom. Level numbers follow
 // the zoning in the structural cutaway reference (silo-layout): governance
@@ -324,7 +361,7 @@ export const STATIONS = [
     ],
   },
   {
-    level: 144,
+    level: 145,
     id: "escavador",
     name: "O VÃO DO ESCAVADOR",
     subtitle: "Abaixo do Nível 144",
@@ -343,22 +380,161 @@ export const STATIONS = [
       "Trezentos anos de túneis se cruzam além desta parede. Nenhum deles consta no Pacto.",
     ],
   },
+  {
+    level: 146,
+    id: "minas",
+    name: "AS MINAS",
+    subtitle: "Frente de Escavação",
+    isSublevel: true,
+    wall: 0x3f352d,
+    floor: 0x261e19,
+    accent: 0xffa04d,
+    light: 0xd07a3a,
+    fog: 0x261d17,
+    roomHalfW: 7,
+    roomDepth: 15,
+    propType: "minas",
+    lore: [
+      "O minério que mantém a Mecânica viva sai daqui, e sai cada vez mais fundo.",
+      "Os turnos são medidos em lâmpadas: quando a sua apaga, você sobe.",
+      "Ninguém registra o que se encontra aqui além de pedra. Nem tudo é pedra.",
+    ],
+  },
+  {
+    level: 147,
+    id: "caverna",
+    name: "A CAVERNA",
+    subtitle: "Cavidade e Estruturas Antigas",
+    isSublevel: true,
+    wall: 0x37302c,
+    floor: 0x211b18,
+    accent: 0x8fb2a8,
+    light: 0x9ab0a8,
+    fog: 0x1e1917,
+    roomHalfW: 8,
+    roomDepth: 17,
+    propType: "caverna",
+    lore: [
+      "O Silo foi construído dentro de algo que já estava aqui.",
+      "As paredes daqui não têm marca de escavadeira: são lisas, e mais antigas.",
+      "O Pacto não menciona este lugar. Nenhuma edição dele jamais mencionou.",
+    ],
+  },
+  {
+    level: 148,
+    id: "limiar",
+    name: "O LIMIAR",
+    subtitle: "Abaixo de Tudo",
+    isSublevel: true,
+    wall: 0x2e2a2a,
+    floor: 0x1b1717,
+    accent: 0xc8481c,
+    light: 0xb4502a,
+    fog: 0x191515,
+    roomHalfW: 7,
+    roomDepth: 14,
+    propType: "limiar",
+    lore: [
+      "Trezentos anos de túneis passam por aqui, e nenhum deles foi cavado por nós.",
+      "Há um cabo nesta parede que não alimenta nada dentro do Silo 18.",
+      "Se existe um lado de fora que não seja veneno, ele começa deste lado.",
+    ],
+  },
 ];
+
+// Extra fraction of a turn on every flight, so each station lands 60 degrees
+// around from the one above. The 3D cutaway alternates its three landings by
+// 60 degrees between levels for exactly this reason: at a whole number of
+// turns per level every floor stacks at the same angle, and looking down the
+// shaft shows one silhouette repeating forever.
+const STATION_ROTATION = 1 / 6;
+
+// Turns of stairs between each consecutive pair of stations, DERIVED from the
+// level numbers at the reference's 2 turns per level instead of hand-tuned.
+// The stair now descends as many levels as its own plaques claim. Every entry
+// stays >= 2 (one level apart is already 2 turns), which is what the headroom
+// clearance in test/layout.test.mjs needs.
+export const TRANSIT_TURNS = STATIONS.slice(1).map((station, i) => {
+  const levels = Math.max(1, station.level - STATIONS[i].level);
+  return levels * TURNS_PER_LEVEL + STATION_ROTATION;
+});
+
 
 // --- Derived layout: precomputes the angle/height of every station and the
 // stair "slope" that connects each consecutive pair. Nothing here depends on
 // three.js so it can run (and be unit-checked) in plain Node. ---
+// Every numbered level of the silo, authored or generated. The twelve-odd
+// hand-written entries in STATIONS are the landmarks; the rest of the 148 are
+// filled in from them, so the whole silo is walkable instead of a dozen floors
+// separated by scenery. A generated level inherits its palette by interpolating
+// between the authored levels above and below it, which keeps the descent
+// reading as one continuous gradient rather than twelve abrupt changes.
+export const DEEPEST_LEVEL = 148;
+
+function generatedLevel(n, above, below) {
+  const span = below.level - above.level;
+  const t = span > 0 ? (n - above.level) / span : 0;
+  const zone = zoneForLevel(n);
+  return {
+    level: n,
+    id: `nivel-${n}`,
+    name: `NÍVEL ${n}`,
+    subtitle: zone.name,
+    generated: true,
+    isSublevel: n > 144,
+    wall: lerpHexColor(above.wall, below.wall, t),
+    floor: lerpHexColor(above.floor, below.floor, t),
+    accent: lerpHexColor(above.accent, below.accent, t),
+    light: lerpHexColor(above.light, below.light, t),
+    fog: lerpHexColor(above.fog, below.fog, t),
+    roomHalfW: SECONDARY_WING.roomHalfW,
+    roomDepth: SECONDARY_WING.roomDepth,
+    propType: null,
+    lore: null,
+  };
+}
+
+// The full 1..148 list, authored entries in place and the gaps filled.
+export function buildLevels() {
+  const authored = new Map(STATIONS.map((s) => [s.level, s]));
+  const authoredLevels = STATIONS.map((s) => s.level);
+  const levels = [];
+
+  for (let n = 1; n <= DEEPEST_LEVEL; n++) {
+    const hit = authored.get(n);
+    if (hit) {
+      levels.push({ ...hit, generated: false });
+      continue;
+    }
+    // nearest authored level on each side, clamped at the ends
+    const aboveLevel = authoredLevels.filter((l) => l <= n).pop() ?? authoredLevels[0];
+    const belowLevel = authoredLevels.find((l) => l >= n) ?? authoredLevels[authoredLevels.length - 1];
+    levels.push(generatedLevel(n, authored.get(aboveLevel), authored.get(belowLevel)));
+  }
+  return levels;
+}
+
+// --- Derived layout: every level's landing angle and height, plus the stair
+// flight between each consecutive pair. Nothing here depends on three.js so it
+// can run (and be unit-checked) in plain Node. ---
 export function buildLayout() {
   const TAU = Math.PI * 2;
-  const stations = STATIONS.map((s) => ({ ...s, zone: zoneForLevel(s.level).name }));
-
-  stations[0].theta = 0;
-  stations[0].y = 0;
-  for (let i = 1; i < stations.length; i++) {
-    const turns = TRANSIT_TURNS[i - 1];
-    stations[i].theta = stations[i - 1].theta + turns * TAU;
-    stations[i].y = stations[i - 1].y - turns * WORLD.risePerTurn;
-  }
+  const stations = buildLevels().map((s, i) => ({
+    ...s,
+    index: i,
+    zone: zoneForLevel(s.level).name,
+    // The helix turns exactly TURNS_PER_LEVEL times between one level and the
+    // next, so every landing sits at the same compass bearing. That is simply
+    // what an integer-turns-per-floor spiral stair does, and it is what lets
+    // the player step off at any level without the stair and the floor
+    // disagreeing about where the landing is.
+    theta: i * TURNS_PER_LEVEL * TAU,
+    y: -i * LEVEL_HEIGHT,
+    // Rotates each level's rooms around the ring so 148 floors are not 148
+    // copies of the same silhouette. The landing itself cannot move (the
+    // helix decides where that is), but what the ring is furnished with can.
+    wingRotation: (i % 6) * (Math.PI / 3) + (i % 2) * 0.18,
+  }));
 
   const slopes = [];
   for (let i = 0; i < stations.length - 1; i++) {
@@ -367,8 +543,8 @@ export function buildLayout() {
     slopes.push({
       fromIndex: i,
       toIndex: i + 1,
-      thetaStart: a.theta + WORLD.plateauHalfAngle,
-      thetaEnd: b.theta - WORLD.plateauHalfAngle,
+      thetaStart: a.theta + WORLD.landingHalfAngle,
+      thetaEnd: b.theta - WORLD.landingHalfAngle,
       yStart: a.y,
       yEnd: b.y,
     });

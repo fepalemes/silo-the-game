@@ -2,86 +2,54 @@ import { zoneForLevel } from "./config.js";
 import { clamp, lerp } from "./mathutils.js";
 
 export function initHud() {
-  const el = {
-    start: document.getElementById("start-screen"),
-    pause: document.getElementById("pause-screen"),
-    hud: document.getElementById("hud"),
-    levelName: document.getElementById("level-name"),
-    levelSub: document.getElementById("level-sub"),
-    levelNumber: document.getElementById("level-number"),
-    depthMarker: document.getElementById("depth-marker"),
-    interactPrompt: document.getElementById("interact-prompt"),
-    lorePanel: document.getElementById("lore-panel"),
-    loreTitle: document.getElementById("lore-title"),
-    loreBody: document.getElementById("lore-body"),
-  };
-
+  const el = Object.fromEntries(["start-screen", "pause-screen", "hud", "level-name", "level-sub", "level-number", "depth-marker", "interact-prompt", "lore-panel", "lore-title", "lore-body", "start-button", "status"].map((id) => [id, document.getElementById(id)]));
+  let lastLocation = "", lastDepth = "";
   function showStart(onStart) {
-    el.start.hidden = false;
-    el.start.addEventListener(
-      "click",
-      function handler() {
-        el.start.removeEventListener("click", handler);
-        onStart();
-      },
-      { once: true }
-    );
+    el["start-screen"].hidden = false;
+    el["start-button"].disabled = false;
+    el["start-button"].textContent = "Entrar no Silo →";
+    el["status"].textContent = "Exploração em primeira pessoa · Fones recomendados";
+    el["start-button"].addEventListener("click", onStart);
   }
-
   function hideStart() {
-    el.start.hidden = true;
+    el["start-screen"].hidden = true;
+    el.hud.hidden = false;
   }
-
   function setPaused(paused) {
-    el.pause.hidden = !paused;
+    el["pause-screen"].hidden = !paused;
+    el.hud.hidden = paused;
+    if (paused) document.getElementById("resume-button").focus();
   }
-
   function setLocation(info) {
-    if (info.fromStation && info.toStation) {
-      const lvl = Math.round(lerp(info.fromStation.level, info.toStation.level, info.progress));
-      el.levelName.textContent = "ESCADARIA";
-      el.levelSub.textContent = `Entre ${info.fromStation.name} e ${info.toStation.name}`;
-      el.levelNumber.textContent = `NÍVEL ${lvl} · ${zoneForLevel(lvl).name}`;
-    } else {
-      el.levelName.textContent = info.station.name;
-      el.levelSub.textContent = info.station.subtitle;
-      el.levelNumber.textContent = info.station.isSublevel
-        ? `ABAIXO DO NÍVEL ${info.station.level}`
-        : `NÍVEL ${info.station.level} · ${zoneForLevel(info.station.level).name}`;
-    }
+    const station = info.station;
+    const stair = Boolean(info.fromStation);
+    const lvl = stair ? Math.round(lerp(info.fromStation.level, info.toStation.level, info.progress)) : station.level;
+    const key = `${stair}:${lvl}:${station.id}`;
+    if (key === lastLocation) return;
+    lastLocation = key;
+    el["level-name"].textContent = stair ? "ESCADARIA CENTRAL" : station.name;
+    el["level-sub"].textContent = stair ? `Nível ${info.fromStation.level} ↔ ${info.toStation.level}` : station.subtitle;
+    el["level-number"].textContent = station.isSublevel ? `SUBSOLO ${lvl - 144} · ABAIXO DO 144` : `NÍVEL ${String(lvl).padStart(3, "0")} / 144 · ${zoneForLevel(lvl).name}`;
   }
-
   function setDepth(fraction) {
-    el.depthMarker.style.top = `${clamp(fraction, 0, 1) * 100}%`;
+    const depth = `${(clamp(fraction, 0, 1) * 100).toFixed(2)}%`;
+    if (depth !== lastDepth) el["depth-marker"].style.top = depth;
+    lastDepth = depth;
   }
-
-  function setInteractVisible(visible) {
-    el.interactPrompt.hidden = !visible;
-  }
-
   function showLore(station) {
-    el.loreTitle.textContent = `${station.name} · NÍVEL ${station.level}`;
-    el.loreBody.textContent = station.lore.join("  ");
-    el.lorePanel.hidden = false;
+    el["lore-title"].textContent = `${station.name} · NÍVEL ${station.level}`;
+    el["lore-body"].replaceChildren(...station.lore.map((text) => {
+      const p = document.createElement("p"); p.textContent = text; return p;
+    }));
+    el["lore-panel"].hidden = false;
   }
-
-  function hideLore() {
-    el.lorePanel.hidden = true;
-  }
-
-  function isLoreOpen() {
-    return !el.lorePanel.hidden;
-  }
-
-  return {
-    showStart,
-    hideStart,
-    setPaused,
-    setLocation,
-    setDepth,
-    setInteractVisible,
-    showLore,
-    hideLore,
-    isLoreOpen,
+  return { showStart, hideStart, setPaused, setLocation, setDepth, showLore,
+    setInteractVisible: (visible) => { el["interact-prompt"].hidden = !visible; },
+    hideLore: () => { el["lore-panel"].hidden = true; },
+    isLoreOpen: () => !el["lore-panel"].hidden,
+    setStatus: (text) => {
+      el.status.textContent = text;
+      document.getElementById("pause-status").textContent = text;
+    },
   };
 }

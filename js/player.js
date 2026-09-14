@@ -6,33 +6,49 @@ const MAX_PITCH = 1.5;
 
 // Pointer-lock FPS controller. Movement/collision math lives in collision.js;
 // this module only owns input, camera orientation and head-bob/footsteps.
-export function createPlayer({ camera, domElement, layout, initialState, onLockChange, onFootstep, frozen = false }) {
-  const state = { ...initialState };
+export function createPlayer({ camera, domElement, layout, initialState, onLockChange, onFootstep, onLockError, frozen = false }) {
+  const state = { level: null, ...initialState };
   let yaw = initialState.yaw ?? -Math.PI / 2;
   let pitch = initialState.pitch ?? 0;
   let locked = false;
   let bobPhase = 0;
   let lastStepIndex = 0;
+  const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
   const keys = Object.create(null);
 
+  let suspended = false;
+  function clearKeys() { for (const key of Object.keys(keys)) delete keys[key]; }
   function onKeyDown(e) {
+    if (!locked || suspended || e.repeat) return;
     keys[e.code] = true;
   }
   function onKeyUp(e) {
     keys[e.code] = false;
   }
   function onMouseMove(e) {
-    if (!locked) return;
+    if (!locked || suspended) return;
     yaw -= e.movementX * PLAYER_SPEED.mouseSensitivity;
     pitch = clamp(pitch - e.movementY * PLAYER_SPEED.mouseSensitivity, -MAX_PITCH, MAX_PITCH);
   }
   function onPointerLockChange() {
     locked = document.pointerLockElement === domElement;
+    clearKeys();
     if (onLockChange) onLockChange(locked);
   }
 
-  domElement.addEventListener("click", () => {
-    if (!locked) domElement.requestPointerLock();
+  function requestLock() {
+    if (frozen || locked) return;
+    try {
+      const request = domElement.requestPointerLock();
+      request?.catch(() => onLockError?.());
+    } catch { onLockError?.(); }
+  }
+  domElement.addEventListener("click", requestLock);
+  document.addEventListener("pointerlockerror", () => onLockError?.());
+  window.addEventListener("blur", clearKeys);
+  document.addEventListener("visibilitychange", () => {
+    clearKeys();
+    if (document.hidden && locked) document.exitPointerLock();
   });
   document.addEventListener("pointerlockchange", onPointerLockChange);
   document.addEventListener("mousemove", onMouseMove);
@@ -58,7 +74,7 @@ export function createPlayer({ camera, domElement, layout, initialState, onLockC
 
     let dx = 0;
     let dz = 0;
-    if (locked && (forwardInput || rightInput)) {
+    if (locked && !suspended && (forwardInput || rightInput)) {
       const fx = -Math.sin(yaw);
       const fz = -Math.cos(yaw);
       const rx = Math.cos(yaw);
@@ -72,13 +88,18 @@ export function createPlayer({ camera, domElement, layout, initialState, onLockC
       }
     }
 
+    const oldX = state.x, oldZ = state.z;
     const next = resolveMove(layout, state, dx, dz);
     state.x = next.x;
     state.y = next.y;
     state.z = next.z;
     state.theta = next.theta;
+    // Which ring floor the player is standing on, or null on the stair. Part
+    // of the state because 148 rings share the same radius and only the route
+    // taken says which one you are on.
+    state.level = next.level;
 
-    const moving = dx !== 0 || dz !== 0;
+    const moving = Math.hypot(state.x - oldX, state.z - oldZ) > 0.0001;
     if (moving) {
       bobPhase += dt * (sprinting ? 11 : 8);
       const stepIndex = Math.floor(bobPhase / Math.PI);
@@ -90,7 +111,7 @@ export function createPlayer({ camera, domElement, layout, initialState, onLockC
       bobPhase = 0;
       lastStepIndex = 0;
     }
-    const bob = moving ? Math.sin(bobPhase) * 0.035 : 0;
+    const bob = moving && !reducedMotion ? Math.sin(bobPhase) * 0.035 : 0;
 
     camera.position.set(state.x, state.y + WORLD.eyeHeight + bob, state.z);
     camera.rotation.y = yaw;
@@ -102,7 +123,8 @@ export function createPlayer({ camera, domElement, layout, initialState, onLockC
   return {
     update,
     isLocked: () => locked,
-    requestLock: () => domElement.requestPointerLock(),
+    requestLock,
+    setSuspended: (value) => { suspended = value; clearKeys(); },
     getState: () => state,
   };
 }

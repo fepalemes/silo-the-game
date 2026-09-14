@@ -402,11 +402,11 @@ export function makePlaqueTexture(lines, { width = 512, height = 256, bg = 0x101
   const mainSize = Math.floor(height * 0.34);
   ctx.font = `bold ${mainSize}px 'Courier New', monospace`;
   const mainY = list[1] ? height * 0.4 : height * 0.5;
-  ctx.fillText(list[0], width / 2, mainY);
+  ctx.fillText(list[0], width / 2, mainY, width - 36);
 
   if (list[1]) {
     ctx.font = `${Math.floor(height * 0.16)}px 'Courier New', monospace`;
-    ctx.fillText(list[1], width / 2, height * 0.72);
+    ctx.fillText(list[1], width / 2, height * 0.72, width - 30);
   }
 
   const tex = new THREE.CanvasTexture(canvas);
@@ -440,6 +440,25 @@ export function makeWastelandTexture({ size = 512, seed = 7 } = {}) {
   ctx.closePath();
   ctx.fill();
 
+  // Ruined skyline and the dead tree give the cafeteria feed its landmarks.
+  ctx.fillStyle = "rgba(48,45,39,.25)";
+  for (let i = 0; i < 28; i++) {
+    const x = size * (0.58 + rand() * 0.36), h = size * (0.01 + rand() * 0.08);
+    ctx.fillRect(x, horizon - h, 2 + rand() * 7, h);
+  }
+  const branch = (x, y, length, angle, depth) => {
+    const ex = x + Math.cos(angle) * length, ey = y + Math.sin(angle) * length;
+    ctx.strokeStyle = "#302c24"; ctx.lineWidth = Math.max(1, depth * 1.4);
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(ex, ey); ctx.stroke();
+    if (depth > 0) {
+      branch(ex, ey, length * 0.65, angle - 0.42 - rand() * 0.3, depth - 1);
+      branch(ex, ey, length * 0.58, angle + 0.5 + rand() * 0.3, depth - 1);
+    }
+  };
+  branch(size * 0.29, size * 0.84, size * 0.15, -1.68, 4);
+  ctx.fillStyle = "rgba(10,12,10,.08)";
+  for (let y = 0; y < size; y += 3) ctx.fillRect(0, y, size, 1);
+
   for (let i = 0; i < 900; i++) {
     const y = rand() * size;
     const fade = Math.max(0, (y - size * 0.1) / size);
@@ -450,4 +469,35 @@ export function makeWastelandTexture({ size = 512, seed = 7 } = {}) {
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
+}
+
+// Matching albedo, micro-relief and roughness for the exemplar's materials.
+// All maps share the same seeded pattern; roughness remains linear data.
+export function makeWorkshopSurface(kind, { size = 256, seed = 83 } = {}) {
+  const rand = mulberry32(seed);
+  const canvas = makeCanvas(size), height = makeCanvas(size), rough = makeCanvas(size);
+  const ctx = canvas.getContext('2d'), hc = height.getContext('2d'), rc = rough.getContext('2d');
+  const color = ctx.createImageData(size, size), relief = hc.createImageData(size, size), roughness = rc.createImageData(size, size);
+  const noise = makeTilingNoise(12, rand);
+  const palette = { stone: [164, 163, 148], paint: [115, 124, 109], wood: [115, 103, 83] }[kind];
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    const i = (y * size + x) * 4, n = noise(x / size, y / size);
+    let v = (n - .5) * 18 + (rand() - .5) * 10, r = 210, h = 128;
+    if (kind === 'wood') {
+      v += Math.sin(x / size * Math.PI * 48 + n * 6) * 4;
+      r = 165 + n * 35; h += v * .4;
+    } else if (kind === 'stone') {
+      if (rand() < .085) v += rand() > .5 ? 30 : -40;
+      r = 160 + n * 65; h += v * .18;
+    } else {
+      const chipped = rand() < .006;
+      v += chipped ? -40 : 0; r = chipped ? 235 : 170 + n * 30; h += chipped ? -12 : v * .15;
+    }
+    for (let k = 0; k < 3; k++) { color.data[i+k] = palette[k] + v; relief.data[i+k] = h; roughness.data[i+k] = r; }
+    color.data[i+3] = relief.data[i+3] = roughness.data[i+3] = 255;
+  }
+  ctx.putImageData(color, 0, 0); hc.putImageData(relief, 0, 0); rc.putImageData(roughness, 0, 0);
+  const roughnessMap = new THREE.CanvasTexture(rough);
+  roughnessMap.wrapS = roughnessMap.wrapT = THREE.RepeatWrapping;
+  return { map: finishColorTexture(canvas), normalMap: makeNormalMapFromHeight(height, 1.3), roughnessMap };
 }

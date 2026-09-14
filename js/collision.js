@@ -1,12 +1,11 @@
 import { SECONDARY_WING, WING_OFFSETS, WORLD } from "./config.js";
-import { clamp, lerp, lerpHexColor, unwrapAngleNear } from "./mathutils.js";
+import { clamp, lerp, lerpHexColor, unwrapAngleNear, wrapToPi } from "./mathutils.js";
 
 const TAPER_FRACTION = 0.12;
 
-// How wide the walkable ring is at slope-progress `t` (0 = just left the
-// upper landing, 1 = about to reach the lower landing): wide at both ends so
-// it flares smoothly into each station's landing, narrow (plain stair width)
-// through the middle of the flight.
+// How wide the walkable stair is at flight-progress `t` (0 = just left the
+// landing above, 1 = about to reach the one below): it flares out to meet the
+// landing at both ends and runs at plain stair width through the middle.
 export function slopeOuterRadius(t) {
   const nearStart = clamp(t / TAPER_FRACTION, 0, 1);
   const nearEnd = clamp((1 - t) / TAPER_FRACTION, 0, 1);
@@ -14,67 +13,62 @@ export function slopeOuterRadius(t) {
   return lerp(WORLD.hubR, WORLD.stairOuterR, narrow);
 }
 
-// Classifies a continuously-tracked (unwrapped) angle into either a
-// station's flat plateau or the sloped stair flight between two stations.
+// Classifies a continuously-tracked (unwrapped) angle into either a level's
+// flat landing or the helical flight between two landings. The landing is only
+// +-landingHalfAngle wide now: the helix runs continuously past every one of
+// the 148 levels and merely pauses to meet each floor, instead of flattening
+// into a plateau that had to be a whole hall wide.
 export function classifyTheta(layout, theta) {
   const { stations, slopes } = layout;
-  const phi = WORLD.plateauHalfAngle;
+  const phi = WORLD.landingHalfAngle;
   const first = stations[0];
   const last = stations[stations.length - 1];
   const clamped = clamp(theta, first.theta - phi, last.theta + phi);
 
-  for (const station of stations) {
-    if (clamped >= station.theta - phi && clamped <= station.theta + phi) {
-      return { type: "plateau", station, theta: clamped };
-    }
+  // Landings sit on a known grid, so find the nearest one by arithmetic rather
+  // than by scanning 148 entries on every movement step.
+  const spacing = stations.length > 1 ? stations[1].theta - stations[0].theta : Infinity;
+  const guess = clamp(Math.round((clamped - first.theta) / spacing), 0, stations.length - 1);
+  const station = stations[guess];
+  if (clamped >= station.theta - phi && clamped <= station.theta + phi) {
+    return { type: "plateau", station, theta: clamped };
   }
-  for (const slope of slopes) {
-    if (clamped >= slope.thetaStart && clamped <= slope.thetaEnd) {
-      const t = (clamped - slope.thetaStart) / (slope.thetaEnd - slope.thetaStart);
-      return { type: "slope", slope, t, theta: clamped };
-    }
-  }
-  // Contiguity of the ranges above means this is unreachable in practice;
-  // fall back defensively to whichever end is closer.
-  const fallback = clamped < first.theta ? first : last;
-  return { type: "plateau", station: fallback, theta: clamped };
+
+  const slopeIndex = clamp(clamped > station.theta ? guess : guess - 1, 0, slopes.length - 1);
+  const slope = slopes[slopeIndex];
+  const t = clamp((clamped - slope.thetaStart) / (slope.thetaEnd - slope.thetaStart), 0, 1);
+  return { type: "slope", slope, t, theta: clamped };
 }
 
-// A station's plateau, from the shaft outward: a small hub where the stair
-// actually lands, then a real open void (no floor at all, matching the gap
-// between the central stair core and the balcony ring in the reference
-// stills), then the outer ring hall (walkable at any angle, like a real
-// atrium balcony), then the wing corridors/rooms beyond it. The void can
-// only be crossed via a bridge at each wing's angle (WING_OFFSETS).
-function resolveOnStation(station, px, pz) {
+// Height of the stair's walking surface at any angle: flat across a landing,
+// helical between them. A pure function of theta - that is the whole point of
+// the model, and it is what lets 148 levels exist without 148 special cases.
+export function surfaceY(layout, theta) {
+  const zone = classifyTheta(layout, theta);
+  if (zone.type === "plateau") return zone.station.y;
+  return lerp(zone.slope.yStart, zone.slope.yEnd, zone.t);
+}
+
+// Is the player within one of this level's wings (corridor or room)? Wings
+// hang off the ring at any bearing now, so this is pure 2D geometry in the
+// wing's own frame.
+function resolveInWing(station, px, pz) {
+  if (station.generated) return false;
   const playerR = WORLD.playerRadius;
-  const r = Math.hypot(px, pz);
-
-  if (r < WORLD.shaftR + playerR) return { ok: false };
-  if (r <= WORLD.hubR - playerR) return { ok: true, x: px, y: station.y, z: pz };
-  if (r >= WORLD.ringInnerR + playerR && r <= WORLD.landingR - playerR) {
-    return { ok: true, x: px, y: station.y, z: pz };
-  }
-
   const roomStart = WORLD.landingR + WORLD.corridorLen;
 
   for (let i = 0; i < WING_OFFSETS.length; i++) {
-    const angle = station.theta + WING_OFFSETS[i];
+    const angle = (station.wingRotation || 0) + WING_OFFSETS[i];
     const cos = Math.cos(angle);
     const sin = Math.sin(angle);
-    const lx = px * cos + pz * sin; // local axis pointing out along this wing's corridor
-    const lz = -px * sin + pz * cos; // local sideways axis
+    const lx = px * cos + pz * sin; // outward along this wing's corridor
+    const lz = -px * sin + pz * cos; // sideways
     const roomHalfW = i === 0 ? station.roomHalfW : SECONDARY_WING.roomHalfW;
     const roomDepth = i === 0 ? station.roomDepth : SECONDARY_WING.roomDepth;
 
-    const inBridge =
-      lx >= WORLD.hubR - playerR &&
-      lx <= WORLD.ringInnerR + playerR &&
-      Math.abs(lz) <= WORLD.bridgeHalfW - playerR;
-
     const inCorridor =
       lx >= WORLD.landingR - playerR &&
-      lx <= WORLD.landingR + WORLD.corridorLen &&
+      lx <= roomStart &&
       Math.abs(lz) <= WORLD.corridorHalfW - playerR;
 
     const inRoom =
@@ -82,37 +76,94 @@ function resolveOnStation(station, px, pz) {
       lx <= roomStart + roomDepth - playerR &&
       Math.abs(lz) <= roomHalfW - playerR;
 
-    if (inBridge || inCorridor || inRoom) return { ok: true, x: px, y: station.y, z: pz };
+    if (inCorridor || inRoom) return true;
   }
-
-  return { ok: false };
+  return false;
 }
 
-function resolveOnSlope(slope, t, theta, px, pz) {
-  const minR = WORLD.shaftR + WORLD.playerRadius;
-  const maxR = slopeOuterRadius(t) - WORLD.playerRadius;
-  const r = clamp(Math.hypot(px, pz), minR, maxR);
-  const y = lerp(slope.yStart, slope.yEnd, t);
-  return { x: r * Math.cos(theta), y, z: r * Math.sin(theta) };
-}
-
-// Resolves a proposed ground-plane move against the silo's layout. Tries the
-// full move first, then each axis alone (a simple, robust approximation of
-// wall-sliding), and finally gives up and keeps the previous position.
+// Resolves a proposed ground-plane move. Tries the full move first, then each
+// axis alone (a simple, robust approximation of wall-sliding), and finally
+// gives up and keeps the previous position.
+//
+// The player's state carries `level`: the index of the ring floor they are
+// standing on, or null when they are on the stair. It has to be part of the
+// state because the ring floors are genuinely ambiguous from position alone -
+// 148 of them sit at the same radius, one above another, and only the route
+// taken says which one you are on.
 export function resolveMove(layout, prevState, moveX, moveZ) {
+  if (!Number.isFinite(moveX) || !Number.isFinite(moveZ)) return { ...prevState };
+  // Substeps prevent a long frame or external move from tunnelling through walls.
+  const count = Math.ceil(Math.hypot(moveX, moveZ) / 0.12);
+  let state = prevState;
+  for (let i = 0; i < Math.max(1, count); i++) {
+    state = resolveStep(layout, state, moveX / Math.max(1, count), moveZ / Math.max(1, count));
+  }
+  return state;
+}
+
+function resolveStep(layout, prevState, moveX, moveZ) {
+  const pr = WORLD.playerRadius;
+  const level = prevState.level ?? null;
+
   const tryDelta = (dx, dz) => {
     const px = prevState.x + dx;
     const pz = prevState.z + dz;
+    const r = Math.hypot(px, pz);
+
+    if (level !== null) {
+      const station = layout.stations[level];
+      // On a level, `theta` is pinned to that level's landing and the player's
+      // compass bearing is read directly. Accumulating theta here instead would
+      // mean a full lap of the ring silently moved the player a turn down the
+      // helix, and stepping back onto the stair would drop them a floor.
+      const bearing = wrapToPi(Math.atan2(pz, px) - station.theta);
+      if (station.obstacles?.some((o) => {
+        const x = px * Math.cos(o.angle) + pz * Math.sin(o.angle) - o.x;
+        const z = -px * Math.sin(o.angle) + pz * Math.cos(o.angle) - o.z;
+        return Math.hypot(Math.max(0, Math.abs(x) - o.hw), Math.max(0, Math.abs(z) - o.hd)) < pr;
+      })) return null;
+      const onRing = r >= WORLD.ringInnerR + pr && r <= WORLD.landingR - pr;
+      if (onRing || resolveInWing(station, px, pz)) {
+        return { x: px, y: station.y, z: pz, theta: station.theta, level };
+      }
+
+      // Back in across the landing deck towards the stair.
+      const atLanding = Math.abs(bearing) <= WORLD.landingHalfAngle && r * Math.sin(WORLD.landingHalfAngle - Math.abs(bearing)) >= pr + 0.22;
+      if (atLanding && r >= WORLD.shaftR + pr && r < WORLD.ringInnerR + pr) {
+        const backOnStair = r <= WORLD.stairOuterR - pr;
+        return {
+          x: px,
+          y: station.y,
+          z: pz,
+          theta: station.theta + bearing,
+          level: backOnStair ? null : level,
+        };
+      }
+      return null;
+    }
+
+    // On the stair: an annulus around the shaft, present at every angle all
+    // the way down.
     const theta = unwrapAngleNear(Math.atan2(pz, px), prevState.theta);
     const zone = classifyTheta(layout, theta);
-
-    if (zone.type === "plateau") {
-      const res = resolveOnStation(zone.station, px, pz);
-      if (!res.ok) return null;
-      return { x: res.x, y: res.y, z: res.z, theta: zone.theta };
+    if (Math.abs(zone.theta - theta) > 1e-6) return null;
+    if (r >= WORLD.shaftR + pr && r <= WORLD.stairOuterR - pr) {
+      const y = zone.type === "plateau" ? zone.station.y : lerp(zone.slope.yStart, zone.slope.yEnd, zone.t);
+      return { x: px, y, z: pz, theta, level: null };
     }
-    const res = resolveOnSlope(zone.slope, zone.t, zone.theta, px, pz);
-    return { x: res.x, y: res.y, z: res.z, theta: zone.theta };
+
+    // At a landing the floor reaches out across the void to the ring.
+    if (zone.type === "plateau" && r > WORLD.stairOuterR - pr && r <= WORLD.landingR - pr && r * Math.sin(WORLD.landingHalfAngle - Math.abs(theta - zone.station.theta)) >= pr + 0.22) {
+      const reachedRing = r >= WORLD.ringInnerR + pr;
+      return {
+        x: px,
+        y: zone.station.y,
+        z: pz,
+        theta,
+        level: reachedRing ? zone.station.index : null,
+      };
+    }
+    return null;
   };
 
   return (
@@ -123,13 +174,18 @@ export function resolveMove(layout, prevState, moveX, moveZ) {
       y: prevState.y,
       z: prevState.z,
       theta: prevState.theta,
+      level,
     }
   );
 }
 
-// For a given (unwrapped) theta, returns the current station (for HUD level
-// labels) and a fog/ambient-light color blended smoothly between zones.
-export function describeLocation(layout, theta) {
+// For the HUD: which level the player is on (or between), and a fog/ambient
+// colour blended smoothly along the descent.
+export function describeLocation(layout, theta, level = null) {
+  if (level !== null) {
+    const station = layout.stations[level];
+    return { station, progress: 1, fog: station.fog, light: station.light };
+  }
   const zone = classifyTheta(layout, theta);
   if (zone.type === "plateau") {
     return { station: zone.station, progress: 1, fog: zone.station.fog, light: zone.station.light };

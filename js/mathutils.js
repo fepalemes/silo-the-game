@@ -44,3 +44,12 @@ export function lerpHexColor(hexA, hexB, t) {
   const b = Math.round(lerp(ab, bb, c));
   return (r << 16) | (g << 8) | b;
 }
+
+// Folds an angle into (-PI, PI]. Needed wherever a bearing has to be compared
+// against a landmark's bearing rather than accumulated: the ring floors are
+// walkable all the way round, so a player's compass bearing there says nothing
+// about how far down the helix they are.
+export function wrapToPi(angle) {
+  const TAU = Math.PI * 2;
+  return angle - TAU * Math.floor((angle + Math.PI) / TAU);
+}

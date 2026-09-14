@@ -3,6 +3,7 @@
 export function createAudio() {
   let ctx = null;
   let master = null;
+  let muted = false, paused = true;
 
   function startDrone() {
     const droneGain = ctx.createGain();
@@ -88,5 +89,9 @@ export function createAudio() {
     osc.stop(ctx.currentTime + 0.2);
   }
 
-  return { ensureContext, footstep, interact };
+  function setPaused(value) {
+    paused = value;
+    if (master) master.gain.setTargetAtTime(paused || muted ? 0 : 0.5, ctx.currentTime, 0.15);
+  }
+  return { ensureContext, footstep, interact, setPaused, toggleMuted: () => { muted = !muted; setPaused(paused); } };
 }
