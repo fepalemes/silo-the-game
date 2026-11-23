@@ -6,6 +6,11 @@ import { workshopSurface, getWallSurface } from './materials.js';
 import { dressCourtyard } from './residential-court.js';
 import { dressAlley } from './residential-alley.js';
 import { makeSignTexture } from '../textures.js';
+import { letteringMaterial, mountPlate } from './signs.js';
+import { WALL_THICKNESS } from './primitives.js';
+import { getWallSurface as wallSurface } from './materials.js';
+
+const FRAME_MAT = new THREE.MeshStandardMaterial({ color: 0x434a3e, roughness: .8, metalness: .15, side: THREE.DoubleSide });
 
 export function buildResidential(scene, station, angle, interactables) {
   const group=new THREE.Group();group.name='residential-28';
@@ -14,7 +19,9 @@ export function buildResidential(scene, station, angle, interactables) {
   const wallColor=0xaaa08b, trim=0x743e30;
   const box=(x,y,z,w,h,d,color=wallColor,map=null)=>addBox(group,{x,y,z,w,h,d,color,map,repeat:map && h<.3 && w>3 ? [w/3,d/3] : undefined});
   const wall=(x,z,w,d)=>{
-    const surface=box(x,1.7,z,w,3.4,d,wallColor,getWallSurface(0));
+    // Past the floor and ceiling, which sit 4mm off the nominal planes at the
+    // alley's mouth (see floor()); flush, they left a slit at both junctions.
+    const surface=box(x,1.7,z,w,3.48,d,wallColor,getWallSurface(0));
     surface.material.normalScale.set(.3,.3);
     box(x,1.05,z,w+.006,.22,d+.006,trim);
     box(x,.12,z,w+.008,.18,d+.008,0x48483c);
@@ -23,10 +30,24 @@ export function buildResidential(scene, station, angle, interactables) {
   // notices so the whole silo shares one printed language. The generator caches
   // by content, which matters here: this helper is called about fifteen times
   // per wing and used to mint a fresh canvas on every call.
-  function sign(text,x,y,z,rotation=0,w=1.3) {
+  //
+  // Every strip is a plate with a body and lettering on one face only, so none
+  // can be read mirrored. `hang` is for the ones that are not on a wall: they
+  // get rods up to the ceiling instead of floating across the walkway.
+  function sign(text,x,y,z,rotation=0,w=1.3,hang=0) {
     const tex=makeSignTexture({kind:'teal',headline:text,width:512,height:112});
-    const m=new THREE.Mesh(new THREE.PlaneGeometry(w,w*.215),new THREE.MeshBasicMaterial({map:tex,side:THREE.DoubleSide,toneMapped:false}));
-    m.position.set(x,y,z);m.rotation.y=rotation;group.add(m);return m;
+    const h=w*.215;
+    const m=new THREE.Mesh(new THREE.PlaneGeometry(w,h),letteringMaterial(tex,{toneMapped:false}));
+    m.position.set(x,y,z);m.rotation.y=rotation;group.add(m);
+    const back=new THREE.Mesh(new THREE.BoxGeometry(w+.05,h+.05,.03),new THREE.MeshStandardMaterial({color:0x1b1d1f,roughness:.55,metalness:.55}));
+    back.position.set(x-Math.sin(rotation)*.019,y,z-Math.cos(rotation)*.019);back.rotation.y=rotation;back.raycast=()=>{};group.add(back);
+    if(hang>y+h/2) m.name='hung-sign';
+    if(hang>y+h/2) for(const side of [-1,1]) {
+      const rod=new THREE.Mesh(new THREE.BoxGeometry(.025,hang-y-h/2,.025),back.material);
+      rod.position.set(back.position.x+Math.cos(rotation)*side*(w/2-.15),(hang+y+h/2)/2,back.position.z-Math.sin(rotation)*side*(w/2-.15));
+      rod.raycast=()=>{};group.add(rod);
+    }
+    return m;
   }
   function lamp(x,z,color=0xffdfb8) {
     box(x,3.24,z,1.15,.1,.3,0x363d34);
@@ -34,16 +55,29 @@ export function buildResidential(scene, station, angle, interactables) {
     lens.material=new THREE.MeshBasicMaterial({color:0xffddaa});
     const light=new THREE.PointLight(color,16,10,2);light.position.set(x,2.95,z);group.add(light);
   }
-  function floor(x0,x1,z0,z1,ceiling=3.4) {
-    box((x0+x1)/2,-.1,(z0+z1)/2,x1-x0,.2,z1-z0,0xb7aa8d,workshopSurface('stone'));
-    box((x0+x1)/2,ceiling+.1,(z0+z1)/2,x1-x0,.2,z1-z0,0x7d7868);
+  function floor(x0,x1,z0,z1,ceiling=3.4,drop=0) {
+    box((x0+x1)/2,-.1-drop,(z0+z1)/2,x1-x0,.2,z1-z0,0xb7aa8d,workshopSurface('stone'));
+    box((x0+x1)/2,ceiling+.1+drop,(z0+z1)/2,x1-x0,.2,z1-z0,0x7d7868);
   }
-  floor(P.start,P.court.x0,-P.half,P.half);
+  // The alley starts within the ring wall's thickness, a hair below the ring's
+  // floor and above its ceiling. It used to start 40cm out in the gallery,
+  // coplanar with the ring's own floor and ceiling, and flickered against both.
+  const mouth=WORLD.landingR+.15;
+  floor(mouth,P.court.x0,-P.half,P.half,3.4,.004);
   floor(P.court.x0,P.court.x1,-P.court.half,P.court.half,P.court.height);
-  floor(P.court.x1,P.plaza.x0,-P.half,P.half);
+  // Between the court and the square the alley is a canyon open well above
+  // the doors, as in the set (new-references 029-039): its ceiling used
+  // to sit at 3.4m like the corridor's, and hid everything over the doors -
+  // the upper storeys, their gallery, the stairs' landings and the very lamps
+  // that light the alley. The walls run on up to it over the rooms' own.
+  floor(P.court.x1,P.plaza.x0,-P.half,P.half,P.canyon);
+  for(const side of [-1,1]) {
+    const upper=box((P.court.x1+P.plaza.x0)/2,(3.4+P.canyon)/2,side*(P.half+.08),P.plaza.x0-P.court.x1,P.canyon-3.4+.02,.16,wallColor,getWallSurface(0));
+    upper.material.normalScale.set(.3,.3);
+  }
   floor(P.plaza.x0,P.plaza.x1,-P.plaza.half,P.plaza.half,P.plaza.height);
   for(const side of [-1,1]) {
-    wall((P.start+P.court.x0)/2,side*P.half,P.court.x0-P.start,.16);
+    wall((mouth+P.court.x0)/2,side*P.half,P.court.x0-mouth,.16);
     wall((P.court.x1+34)/2,side*P.half,34-P.court.x1,.16);
     wall((52+P.plaza.x0)/2,side*P.half,P.plaza.x0-52,.16);
   }
@@ -51,7 +85,10 @@ export function buildResidential(scene, station, angle, interactables) {
   for(const x of [24,35,39,43,47,51])lamp(x,0);
   dressCourtyard(group,box,sign);
   dressAlley(group,box,sign);
-  sign('HABITAÇÃO · 28',23.05,2.8,0,-Math.PI/2,2.7);
+  // The head of the doorway in the ring wall, and the wing's name on it. The
+  // strip used to hang loose in the opening.
+  box(WORLD.landingR+WALL_THICKNESS/2,2.925,0,WALL_THICKNESS,.95,WORLD.corridorHalfW*2+.5,wallColor,wallSurface(0));
+  sign('HABITAÇÃO · 28',WORLD.landingR-.02,2.72,0,-Math.PI/2,2.4);
   sign('APARTAMENTOS →',33.5,2.1,-P.half+.09,0,2);
   const record=sign('RESIDENCIAL · REGISTRO',25,1.65,-P.half+.1,0,1.5);
   interactables.push({mesh:record,station});
@@ -74,6 +111,21 @@ export function buildResidential(scene, station, angle, interactables) {
     box(cx,2.94,z,1.5,.92,.16);
     for(const x of [left,right])box(x,1.2,z,.09,2.4,.23,0x434a3e);
     box(cx,2.39,z,1.59,.09,.23,0x434a3e);
+    // The frame's head is rounded into its jambs, like every opening in the
+    // set (new-references 029-039): a fillet in each top corner, the leaf's
+    // square corners tucked behind it. And the door stands a step up from the
+    // alley, on a worn concrete stoop in its niche.
+    for(const side of [-1,1]) {
+      const r=.3,f=new THREE.Shape();
+      // Drawn mirrored rather than scaled by -1, which would turn its faces inside out.
+      if(side>0){f.moveTo(0,0);f.lineTo(-r,0);f.absarc(-r,-r,r,Math.PI/2,0,true);}
+      else{f.moveTo(0,0);f.lineTo(0,-r);f.absarc(r,-r,r,Math.PI,Math.PI/2,true);}
+      f.lineTo(0,0);
+      const g=new THREE.ExtrudeGeometry(f,{depth:.23,bevelEnabled:false,curveSegments:8});
+      g.translate(0,0,-.115);
+      const fillet=new THREE.Mesh(g,FRAME_MAT);fillet.position.set(cx+side*.705,2.345,z);fillet.raycast=()=>{};group.add(fillet);
+    }
+    box(cx,.05,z-s*.25,1.72,.1,.46,0x8a8a80,getWallSurface(0));
     sign(room.label,cx,2.69,z-s*.1,s>0?Math.PI:0,2.3);
     lamp(a+2.5,s*4.9);
 

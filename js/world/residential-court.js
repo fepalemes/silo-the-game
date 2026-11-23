@@ -31,6 +31,12 @@ export function dressCourtyard(group,box,sign) {
     wall(mid,side*c.half,7,.22);
     // Return walls close the enlarged court around both corridor openings.
     for(const x of [c.x0,c.x1])wall(x,side*(c.half+P.half)/2,.2,c.half-P.half);
+    // ...and the head of each opening, from the alley's ceiling up to the
+    // court's. Without it, looking up from the court saw over the alley's
+    // roof into the empty storey between levels.
+    // On the square's side the alley rises higher than the court: there the
+    // head closes the alley's canyon down to the court's ceiling.
+    if(side>0){wall(c.x0,0,.2,P.half*2,c.height-3.4,(c.height+3.4)/2);wall(c.x1,0,.2,P.half*2,P.canyon-c.height,(c.height+P.canyon)/2);}
     const face=side*(c.half-.13),rot=side>0?Math.PI:0;
     for(const x of [27.5,31.3]) {
       box(x,4.68,side*(c.half-.16),2.5,2.25,.17,side>0?0x6d7972:0x8b6550,workshopSurface('paint'));
@@ -61,7 +67,8 @@ export function dressCourtyard(group,box,sign) {
     window(mid,1.8,side*.815,side>0?0:Math.PI,1.5,.9);
     sign('MANUTENÇÃO · 28',mid,2.7,side*.825,side>0?0:Math.PI,1.85);
   }
-  sign('APARTAMENTOS / SERVIÇOS →',mid,2.5,-.02,-Math.PI/2,2.4).position.x=c.x0+.02;
+  // Hung from the alley's ceiling at the mouth of the court.
+  sign('APARTAMENTOS / SERVIÇOS →',c.x0-.25,2.72,0,-Math.PI/2,2.4,3.4);
   // Roof ribs and a translucent-looking central light well. No opening into
   // the floor above: the entire court stays below the 7.6 m floor spacing.
   for(const x of [26.2,28.4,30.6,32.8])box(x,6.24,0,.17,.36,12,0x4c564b);

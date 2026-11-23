@@ -5,15 +5,16 @@ import { WORLD } from "../config.js";
 import { slopeOuterRadius } from "../collision.js";
 import { lerp } from "../mathutils.js";
 import { makePlaqueTexture, mulberry32 } from "../textures.js";
-import { getStructureSurface } from "./materials.js";
+import { getStructureSurface, STRUCTURE_COLORS } from "./materials.js";
 import { buildParapet } from "./fixtures.js";
 import { PARAPET_THICKNESS } from "./primitives.js";
+import { letteringMaterial } from "./signs.js";
 
 export function buildTransit(scene, layout, slope) {
   const angleSpan = slope.thetaEnd - slope.thetaStart;
   const sections = stairSections(slope, WORLD.stepsPerTurn);
 
-  const treadMat = new THREE.MeshStandardMaterial({ ...getStructureSurface(), color: 0xb1b2a8, roughness: 0.94, metalness: 0.01, side: THREE.DoubleSide });
+  const treadMat = new THREE.MeshStandardMaterial({ ...getStructureSurface(), color: STRUCTURE_COLORS.tread, roughness: 0.94, metalness: 0.01, side: THREE.DoubleSide });
   const data = meshData();
   const nosings = meshData();
   const grooves = meshData();
@@ -62,7 +63,7 @@ export function buildTransit(scene, layout, slope) {
   treads.name = `stair-treads-${slope.fromIndex}`;
   treads.castShadow = treads.receiveShadow = true;
   scene.add(treads);
-  if (nosings.positions.length) scene.add(new THREE.Mesh(geometryFromData(nosings), new THREE.MeshStandardMaterial({ ...getStructureSurface(), color: 0xb9b39e, roughness: .78, side: THREE.DoubleSide })));
+  if (nosings.positions.length) scene.add(new THREE.Mesh(geometryFromData(nosings), new THREE.MeshStandardMaterial({ ...getStructureSurface(), color: STRUCTURE_COLORS.nosing, roughness: .78, side: THREE.DoubleSide })));
 
   if (grooves.positions.length) {
     const inserts = new THREE.Mesh(geometryFromData(grooves), new THREE.MeshStandardMaterial({ color: 0x55564a, roughness: .92 }));
@@ -85,20 +86,22 @@ export function buildTransit(scene, layout, slope) {
   const fromLevel = layout.stations[slope.fromIndex].level;
   const toLevel = layout.stations[slope.toIndex].level;
   const turns = Math.floor(angleSpan / (Math.PI * 2));
-  let lastLevel = fromLevel;
+  // One texture for the whole flight: every plaque on it says the same thing.
+  const plaqueMat = letteringMaterial(makePlaqueTexture([`${fromLevel} ↓ ${toLevel}`], { width: 320, height: 180, fg: 0xd8cba4, bg: 0x0c0d0e }));
+  const plaqueGeo = new THREE.PlaneGeometry(0.5, 0.28);
+  // On the stair-side face of the inner guard wall, below its coping. It used
+  // to sit at the wall's shaft-side face and above its top: half buried in the
+  // concrete, half floating over it, and facing the wall it was buried in.
+  const plaqueR = WORLD.shaftR + PARAPET_THICKNESS + 0.012;
   for (let k = 1; k <= turns; k++) {
     const theta = slope.thetaStart + k * Math.PI * 2;
     if (theta >= slope.thetaEnd) break;
     const t = (theta - slope.thetaStart) / angleSpan;
     const y = lerp(slope.yStart, slope.yEnd, t);
-    let level = fromLevel;
-    lastLevel = level;
-
-    const tex = makePlaqueTexture([`${fromLevel} ↓ ${toLevel}`], { width: 320, height: 180, fg: 0xd8cba4, bg: 0x0c0d0e });
-    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.28), new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide }));
-    const plaqueR = WORLD.shaftR + 0.02;
-    mesh.position.set(plaqueR * Math.cos(theta), y + 1.1, plaqueR * Math.sin(theta));
+    const mesh = new THREE.Mesh(plaqueGeo, plaqueMat);
+    mesh.position.set(plaqueR * Math.cos(theta), y + 0.68, plaqueR * Math.sin(theta));
     mesh.rotation.y = Math.PI / 2 - theta;
+    mesh.raycast = () => {};
     scene.add(mesh);
   }
 }

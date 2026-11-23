@@ -110,6 +110,131 @@ export const SECONDARY_WING = {
   roomDepth: 7,
 };
 
+// What the two side rooms (wings B and C) of each department are, furnished
+// by js/world/rooms.js. They used to be the same store room with three crates
+// on every level. Two are not rectangles: on level 1, the sheriff's station
+// is the production's round bull pen (new-references 049-057), and the
+// controlled exit runs to the airlock door (058-065).
+export const SIDE_ROOMS = {
+  topo: [
+    { kind: "police", label: "XERIFE", shape: "round", radius: 6.5, clearance: 0.75 },
+    { kind: "airlock", label: "SAÍDA CONTROLADA", halfW: 2.7, depth: 9.5 },
+  ],
+  ninho: [{ kind: "cells", label: "CELAS" }, { kind: "deputy", label: "DELEGADO DE PLANTÃO" }],
+  residencial: [{ kind: "mess", label: "SALÃO COMUNITÁRIO" }, { kind: "storage", label: "DEPÓSITO" }],
+  ti: [{ kind: "servers", label: "SERVIDORES" }, { kind: "radio", label: "COMUNICAÇÕES" }],
+  judicial: [{ kind: "archive", label: "ARQUIVO DO PACTO" }, { kind: "office", label: "SECRETARIA" }],
+  creche: [{ kind: "classroom", label: "SALA DE AULA" }, { kind: "nursery", label: "BERÇÁRIO" }],
+  rocas: [{ kind: "seedbank", label: "BANCO DE SEMENTES" }, { kind: "hydroponics", label: "ESTUFA" }],
+  bazar: [{ kind: "tailor", label: "ALFAIATARIA" }, { kind: "bar", label: "BAR" }],
+  enfermaria: [{ kind: "ward", label: "ENFERMARIA B" }, { kind: "pharmacy", label: "BOTICA" }],
+  agua: [{ kind: "pumps", label: "BOMBAS" }, { kind: "lab", label: "LABORATÓRIO" }],
+  mecanica: [{ kind: "workshop", label: "OFICINA" }, { kind: "parts", label: "ALMOXARIFADO" }],
+  gerador: [{ kind: "control", label: "SALA DE CONTROLE" }, { kind: "lockers", label: "VESTIÁRIO" }],
+  escavador: [{ kind: "minestores", label: "PAIOL" }, { kind: "workshop", label: "OFICINA DE CAMPO" }],
+  minas: [{ kind: "lockers", label: "LAMPISTERIA" }, { kind: "minestores", label: "MINÉRIO" }],
+  caverna: [{ kind: "survey", label: "LEVANTAMENTO" }, { kind: "parts", label: "DEPÓSITO" }],
+  limiar: [{ kind: "splice", label: "CAIXA DE CABOS" }, { kind: "storage", label: "DEPÓSITO" }],
+};
+
+// The room at the end of wing `i` of a level: its shape and size, and what
+// it is. Wing 0 is the department's own room; a round one's halfW is its
+// radius and its depth the diameter.
+export function wingSpec(station, i) {
+  if (i === 0) {
+    return { shape: station.roomShape === "round" ? "round" : "box", halfW: station.roomHalfW, depth: station.roomDepth, height: station.roomHeight, kind: station.propType, clearance: CAFETERIA.wallClearance };
+  }
+  const side = SIDE_ROOMS[station.id]?.[i - 1] || {};
+  if (side.shape === "round") return { ...side, halfW: side.radius, depth: side.radius * 2 };
+  return { shape: "box", halfW: SECONDARY_WING.roomHalfW, depth: SECONDARY_WING.roomDepth, ...side };
+}
+
+// The dome over the top of the shaft (js/world/dome.js) and the central column
+// that carries its lamp. Heights are from the top level's floor.
+export const DOME = {
+  // The drum stands just outside the rings' inner edge, on the top gallery.
+  radius: WORLD.ringInnerR + 0.6,
+  drum: 2.4,
+  // The stair's core: a real column, as in every reference, filling the
+  // helix's central void (WORLD.shaftR) bar a hand's breadth.
+  column: 1.45,
+  bowlRadius: 7,
+  // Its depth as a fraction of its radius: a shallow bowl, not a hemisphere.
+  bowlDepth: 0.6,
+  bowlRim: WORLD.roomHeight + 2.4 + 12,
+};
+
+// The service risers: columns that run the full height of the shaft, just
+// inside the rings' inner edge, each with a caged lamp at every level. Every
+// landing deck sits at a multiple of 60 degrees (the helix turns 13/6 per
+// level), so the risers stand on the bisectors between them and can never
+// come up through a deck. They used to sit at 0.6/2.1/3.6/5.1 rad, and two of
+// those pierced the deck of every third level.
+export const RISERS = {
+  r: WORLD.ringInnerR - 0.85,
+  angles: Array.from({ length: 6 }, (_, k) => Math.PI / 6 + (k * Math.PI) / 3),
+  // Radius of the widest part (the flange collars).
+  radius: 0.78,
+};
+
+// The gallery columns: the great round columns standing on the inner edge of
+// every gallery and running unbroken from the bottom of the silo to the top
+// level, with an opal ring lamp under each slab they pass (silo-1, silo-2,
+// silo-3, silo-19, the production's Vectorworks model). They used to be short
+// posts in the middle of each gallery, one storey tall under a false ceiling.
+//
+// Same bearings on every level, or they would not be columns. Landing decks
+// sit at multiples of 60 degrees and the risers on the bisectors between, so
+// the columns stand 21.5 degrees either side of each deck bearing: clear of
+// any level's deck (15.5 degrees wide) and of the risers.
+export const GALLERY_COLUMNS = {
+  r: WORLD.ringInnerR + 0.1,
+  radius: 0.62,
+  angles: Array.from({ length: 12 }, (_, k) => Math.floor(k / 2) * (Math.PI / 3) + (k % 2 ? 1 : -1) * 0.375),
+};
+
+// The storeys of a level. A level is 8.23m floor to floor; the gallery runs
+// the full height of it, open to the underside of the slab above, and the
+// facade behind it is two storeys of apartments and services: doors on the
+// gallery, then a second storey with balconies reached by small stairs.
+export const FACADE = {
+  // Floor of the upper storey's balconies, from the level's own floor.
+  upperFloor: 3.6,
+  // Underside of the slab above.
+  top: LEVEL_HEIGHT - SLAB_THICKNESS,
+};
+
+// Nearest bearing to `wanted` where a bay of `halfWidth` clears every riser,
+// every gallery column, the level's own landing deck and the bays already
+// placed.
+function clearBayBearing(wanted, halfWidth, landing, placed) {
+  const gap = (a, b) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
+  const riserHalf = Math.asin(RISERS.radius / RISERS.r);
+  const columnHalf = Math.asin(GALLERY_COLUMNS.radius / GALLERY_COLUMNS.r);
+  const clear = (b) =>
+    RISERS.angles.every((r) => gap(b, r) >= halfWidth + riserHalf + 0.05) &&
+    GALLERY_COLUMNS.angles.every((c) => gap(b, c) >= halfWidth + columnHalf + 0.04) &&
+    gap(b, landing) >= halfWidth + WORLD.landingHalfAngle + 0.06 &&
+    placed.every((p) => gap(b, p.bearing) >= halfWidth + p.halfWidth + 0.1);
+  // Clear windows come every 60 degrees, and the one on the deck is never
+  // free, so the search may have to go most of a sextant either way.
+  for (let step = 0; step < 640; step++) {
+    const d = Math.ceil(step / 2) * 0.01 * (step % 2 ? 1 : -1);
+    if (clear(wanted + d)) return wanted + d;
+  }
+  return wanted; // not reached: five of the six windows round the ring are always free
+}
+
+// The upper cafeteria (js/world/cafeteria.js): a round hall, its diameter the
+// level's roomDepth. Here rather than beside the geometry because the
+// collision runs in plain Node.
+export const CAFETERIA = {
+  height: 4.6,
+  // How far the walkable floor stops short of the wall; the pilasters stand
+  // proud of it by this much.
+  wallClearance: 0.22,
+};
+
 export const PLAYER_SPEED = {
   walk: 3.8,
   sprint: 7.0,
@@ -135,11 +260,14 @@ export function zoneForLevel(level) {
 
 
 
-// The twelve hand-built floors, ordered top -> bottom. Level numbers follow
-// the zoning in the structural cutaway reference (silo-layout): governance
-// and the sheriff sit up top, schools and apartments in the upper-middle,
-// medical and social in the middle, farms/water/IT in the middle-lower, and
-// all heavy machinery in the bottom band.
+// The hand-built floors, ordered top -> bottom. Where the production's own
+// shaft maps say where a department is (new-references 079-080: the
+// full-length floor maps and the deputy-station call signs), the level is
+// theirs: the sheriff, holding, administration and the airlock beside the
+// cafeteria on 1, deputy stations every eighteen levels or so (18, 36, 54,
+// 69, 87, 105, 123, 141), IT on 34, judicial on 39, agriculture 66, the
+// marketplace 68, medical 73. The rest (schools, water, mechanical) keep the
+// project's own placing; the maps do not settle them.
 export const STATIONS = [
   {
     level: 1,
@@ -151,8 +279,10 @@ export const STATIONS = [
     accent: 0xdfe9f0,
     light: 0xaecbe0,
     fog: 0x7e8b96,
-    roomHalfW: 5.5,
-    roomDepth: 11,
+    // A round hall: roomHalfW is its radius, roomDepth its diameter.
+    roomShape: "round",
+    roomHalfW: 12.5,
+    roomDepth: 25,
     propType: "topo",
     lore: [
       "O ecrã mostra o mundo lá fora: colinas mortas sob um céu da cor de ferrugem.",
@@ -161,29 +291,10 @@ export const STATIONS = [
     ],
   },
   {
-    level: 8,
-    id: "judicial",
-    name: "JUDICIAL",
-    subtitle: "Governança e o Pacto",
-    wall: 0x6e6862,
-    floor: 0x4a4642,
-    accent: 0xc23b3b,
-    light: 0xd45a3f,
-    fog: 0x5c534c,
-    roomHalfW: 5.5,
-    roomDepth: 12,
-    propType: "judicial",
-    lore: [
-      "O Pacto foi escrito antes de qualquer pessoa viva ter nascido.",
-      "Aqui, ele é lido em voz alta - e depois, aplicado sem exceções.",
-      "Quem escreveu o Pacto não mora neste Silo. Isso não está escrito em lugar nenhum.",
-    ],
-  },
-  {
-    level: 17,
+    level: 18,
     id: "ninho",
-    name: "O NINHO",
-    subtitle: "Posto do Xerife",
+    name: "DELEGACIA",
+    subtitle: "Posto de Delegados do Alto",
     wall: 0x8f8368,
     floor: 0x655c48,
     accent: 0xe0b96a,
@@ -193,8 +304,8 @@ export const STATIONS = [
     roomDepth: 10,
     propType: "ninho",
     lore: [
-      "O distintivo já passou por mais mãos do que qualquer um consegue contar.",
-      "Manter a paz, aqui, significa sobretudo manter as pessoas em silêncio.",
+      "O xerife fica no Topo. Aqui embaixo, quem atende é o delegado de plantão.",
+      "Cada posto tem um código de chamada. O deste é o 18, e o rádio nunca fica mudo.",
       "Uma cela vazia é uma boa notícia. Raramente dura o dia todo.",
     ],
   },
@@ -218,6 +329,44 @@ export const STATIONS = [
     ],
   },
   {
+    level: 34,
+    id: "ti",
+    name: "TI",
+    subtitle: "Central de Dados e Comunicações",
+    wall: 0x6f7a84,
+    floor: 0x4c545b,
+    accent: 0x8fd0ff,
+    light: 0x6fc3ff,
+    fog: 0x49535c,
+    roomHalfW: 5,
+    roomDepth: 12,
+    propType: "ti",
+    lore: [
+      "Servidores guardam cada palavra dita nos últimos cento e quarenta anos.",
+      "E decidem, em silêncio, quais dessas palavras o Silo pode ouvir de novo.",
+      "Atrás da porta do Cofre há uma voz. Ela não é daqui, e só o chefe de TI pode ouvi-la.",
+    ],
+  },
+  {
+    level: 39,
+    id: "judicial",
+    name: "JUDICIAL",
+    subtitle: "Governança e o Pacto",
+    wall: 0x6e6862,
+    floor: 0x4a4642,
+    accent: 0xc23b3b,
+    light: 0xd45a3f,
+    fog: 0x5c534c,
+    roomHalfW: 5.5,
+    roomDepth: 12,
+    propType: "judicial",
+    lore: [
+      "O Pacto foi escrito antes de qualquer pessoa viva ter nascido.",
+      "Aqui, ele é lido em voz alta - e depois, aplicado sem exceções.",
+      "Quem escreveu o Pacto não mora neste Silo. Isso não está escrito em lugar nenhum.",
+    ],
+  },
+  {
     level: 40,
     id: "creche",
     name: "CRECHE E ESCOLA",
@@ -237,26 +386,26 @@ export const STATIONS = [
     ],
   },
   {
-    level: 56,
-    id: "enfermaria",
-    name: "ENFERMARIA",
-    subtitle: "Médico, Botica e Berçário",
-    wall: 0x9aa7a4,
-    floor: 0x66726f,
-    accent: 0xd8f0ea,
-    light: 0xcfe8e2,
-    fog: 0x66736f,
-    roomHalfW: 5.2,
-    roomDepth: 12,
-    propType: "enfermaria",
+    level: 66,
+    id: "rocas",
+    name: "AS ROÇAS",
+    subtitle: "Fazendas e Jardins",
+    wall: 0x5c6e52,
+    floor: 0x3f4d3a,
+    accent: 0xa9ff8a,
+    light: 0xbfffb0,
+    fog: 0x4c5a44,
+    roomHalfW: 6,
+    roomDepth: 13,
+    propType: "rocas",
     lore: [
-      "Remédio aqui se mede em gotas e se anota em três livros diferentes.",
-      "Todo nascimento é registrado no mesmo minuto em que uma morte é confirmada.",
-      "O médico sabe o nome de todo mundo. É a profissão mais perigosa do Silo.",
+      "As luzes nunca desligam. Aqui embaixo, o dia e a noite são um horário de trabalho.",
+      "Cada semente colhida é contada, registrada e replantada sem exceção.",
+      "Um andar inteiro de verde, cercado de quilômetros de concreto cinzento.",
     ],
   },
   {
-    level: 72,
+    level: 68,
     id: "bazar",
     name: "O BAZAR",
     subtitle: "Lojas, Bar e Alfaiataria",
@@ -275,22 +424,22 @@ export const STATIONS = [
     ],
   },
   {
-    level: 88,
-    id: "rocas",
-    name: "AS ROÇAS",
-    subtitle: "Fazendas e Jardins",
-    wall: 0x5c6e52,
-    floor: 0x3f4d3a,
-    accent: 0xa9ff8a,
-    light: 0xbfffb0,
-    fog: 0x4c5a44,
-    roomHalfW: 6,
-    roomDepth: 13,
-    propType: "rocas",
+    level: 73,
+    id: "enfermaria",
+    name: "ENFERMARIA",
+    subtitle: "Médico, Botica e Berçário",
+    wall: 0x9aa7a4,
+    floor: 0x66726f,
+    accent: 0xd8f0ea,
+    light: 0xcfe8e2,
+    fog: 0x66736f,
+    roomHalfW: 5.2,
+    roomDepth: 12,
+    propType: "enfermaria",
     lore: [
-      "As luzes nunca desligam. Aqui embaixo, o dia e a noite são um horário de trabalho.",
-      "Cada semente colhida é contada, registrada e replantada sem exceção.",
-      "Um andar inteiro de verde, cercado de quilômetros de concreto cinzento.",
+      "Remédio aqui se mede em gotas e se anota em três livros diferentes.",
+      "Todo nascimento é registrado no mesmo minuto em que uma morte é confirmada.",
+      "O médico sabe o nome de todo mundo. É a profissão mais perigosa do Silo.",
     ],
   },
   {
@@ -310,25 +459,6 @@ export const STATIONS = [
       "Toda gota que alguém bebe no Silo já passou por aqui centenas de vezes.",
       "Os canos são mais velhos que o Pacto e reclamam disso constantemente.",
       "Se as bombas parassem, o Silo inteiro afogaria de baixo para cima. Dizem que já aconteceu em algum lugar.",
-    ],
-  },
-  {
-    level: 110,
-    id: "ti",
-    name: "TI",
-    subtitle: "Central de Dados e Comunicações",
-    wall: 0x6f7a84,
-    floor: 0x4c545b,
-    accent: 0x8fd0ff,
-    light: 0x6fc3ff,
-    fog: 0x49535c,
-    roomHalfW: 5,
-    roomDepth: 12,
-    propType: "ti",
-    lore: [
-      "Servidores guardam cada palavra dita nos últimos cento e quarenta anos.",
-      "E decidem, em silêncio, quais dessas palavras o Silo pode ouvir de novo.",
-      "Atrás da porta do Cofre há uma voz. Ela não é daqui, e só o chefe de TI pode ouvi-la.",
     ],
   },
   {
@@ -362,6 +492,10 @@ export const STATIONS = [
     fog: 0x3d2018,
     roomHalfW: 7,
     roomDepth: 15,
+    // The generator hall is monumental (new-references 089-098): three
+    // storeys of turbine, platforms and pipework. Nothing stands over a
+    // level-144 wing, and 9.4m keeps a roof within one level of the floor.
+    roomHeight: 9.4,
     propType: "gerador",
     lore: [
       "Este é o coração: gira há mais tempo do que qualquer registro consegue provar.",
@@ -480,6 +614,36 @@ export const TRANSIT_TURNS = STATIONS.slice(1).map((station, i) => {
 // reading as one continuous gradient rather than twelve abrupt changes.
 export const DEEPEST_LEVEL = 148;
 
+// The concrete. Every reference shows the same grey poured concrete from the
+// top of the silo to the bottom; what tells one sector from another is its
+// light and what is in it, not the colour of its walls. So walls, floors and
+// haze come from this one material, darkening with depth (the production notes
+// describe the lower levels as damp and grimy), and each level's own `light`
+// and `accent` carry its identity. The per-sector wall/floor/fog colours in
+// STATIONS are kept as data but no longer reach a surface.
+//
+// Cool grey, measured off the production stills: concrete under ambient light
+// alone sits at hue ~195-230 and saturation ~0.2 in silo-2 and silo-19. The
+// warmth in those frames is the lamps', not the concrete's.
+export const CONCRETE = {
+  top: { wall: 0x939ca3, floor: 0x6b7277, fog: 0x78818a },
+  bottom: { wall: 0x5b5f63, floor: 0x3b3e41, fog: 0x2a2e32 },
+  // How much of a level's own light colour tints its haze.
+  sectorHaze: 0.12,
+};
+
+export function concreteFor(level, light) {
+  const t = Math.min(1, Math.max(0, (level - 1) / (DEEPEST_LEVEL - 1)));
+  // The upper silo stays pale for longer; the darkening gathers below the mids.
+  const e = Math.pow(t, 1.35);
+  const { top, bottom } = CONCRETE;
+  return {
+    wall: lerpHexColor(top.wall, bottom.wall, e),
+    floor: lerpHexColor(top.floor, bottom.floor, e),
+    fog: lerpHexColor(lerpHexColor(top.fog, bottom.fog, e), light, CONCRETE.sectorHaze),
+  };
+}
+
 function generatedLevel(n, above, below) {
   const span = below.level - above.level;
   const t = span > 0 ? (n - above.level) / span : 0;
@@ -511,14 +675,15 @@ export function buildLevels() {
 
   for (let n = 1; n <= DEEPEST_LEVEL; n++) {
     const hit = authored.get(n);
-    if (hit) {
-      levels.push({ ...hit, generated: false });
-      continue;
+    let level;
+    if (hit) level = { ...hit, generated: false };
+    else {
+      // nearest authored level on each side, clamped at the ends
+      const aboveLevel = authoredLevels.filter((l) => l <= n).pop() ?? authoredLevels[0];
+      const belowLevel = authoredLevels.find((l) => l >= n) ?? authoredLevels[authoredLevels.length - 1];
+      level = generatedLevel(n, authored.get(aboveLevel), authored.get(belowLevel));
     }
-    // nearest authored level on each side, clamped at the ends
-    const aboveLevel = authoredLevels.filter((l) => l <= n).pop() ?? authoredLevels[0];
-    const belowLevel = authoredLevels.find((l) => l >= n) ?? authoredLevels[authoredLevels.length - 1];
-    levels.push(generatedLevel(n, authored.get(aboveLevel), authored.get(belowLevel)));
+    levels.push({ ...level, ...concreteFor(n, level.light) });
   }
   return levels;
 }
@@ -546,11 +711,12 @@ export function buildLayout() {
     // floors are not clean circles: rounded balconies push out over the void,
     // and they are where you stand to look up and down the silo. Bearings are
     // offset per level so they do not stack into a column.
-    bays: [1.9, 4.15].map((a, k) => ({
-      bearing: i * TURNS_PER_LEVEL * TAU + a + (i % 3) * 0.37 + k * 0.11,
-      halfWidth: 0.19,
-      reach: 2.4,
-    })),
+    // Each is nudged to the nearest bearing clear of the risers and the deck.
+    bays: [1.9, 4.15].reduce((placed, a, k) => {
+      const wanted = i * TURNS_PER_LEVEL * TAU + a + (i % 3) * 0.37 + k * 0.11;
+      placed.push({ bearing: clearBayBearing(wanted, 0.19, i * TURNS_PER_LEVEL * TAU, placed), halfWidth: 0.19, reach: 2.4 });
+      return placed;
+    }, []),
   }));
 
   const slopes = [];

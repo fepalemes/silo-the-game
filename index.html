@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SILO — Descida</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%2323262a'/%3E%3Ccircle cx='16' cy='16' r='9' fill='none' stroke='%23ffd9a0' stroke-width='3'/%3E%3Ccircle cx='16' cy='16' r='3' fill='%23ffd9a0'/%3E%3C/svg%3E" />
     <link rel="stylesheet" href="css/style.css" />
     <script type="importmap">
       {
@@ -67,6 +68,8 @@
           <div><b>P</b><span>salvar progresso</span></div>
         </div>
         <button id="start-button" class="cta" disabled>Preparando a descida…</button>
+        <button id="vr-button" class="cta secondary" hidden>Entrar com o óculos →</button>
+        <p id="vr-hint" class="credit" hidden>No óculos: analógico esquerdo anda · analógico direito gira · gatilho examina · apertar a empunhadura apressa o passo.</p>
         <p id="status" role="status">Construindo as galerias e a escadaria.</p>
         <p class="credit">Experiência de fã não oficial, inspirada em Silo, da Apple TV.</p>
       </div>
@@ -78,6 +81,7 @@
         <h2>Uma pausa na descida.</h2>
         <p>Seu lugar está aqui. Continue quando quiser.</p>
         <button id="resume-button" class="cta">Continuar →</button>
+        <button id="vr-resume-button" class="cta secondary" hidden>Continuar com o óculos →</button>
         <button id="save-button" class="cta secondary">Salvar progresso · P</button>
         <p class="credit">Salvo neste navegador. Retome pelo botão Continuar ao abrir o jogo.</p>
         <p id="pause-status" role="status"></p>

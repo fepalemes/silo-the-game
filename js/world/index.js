@@ -4,17 +4,24 @@ import * as THREE from "three";
 import { WING_OFFSETS, WORLD } from "../config.js";
 import { createLightPool } from "../lightpool.js";
 import { buildTransit } from "./stairs.js";
-import { buildCentralPole, buildOuterShell, buildServiceRisers } from "./scenery.js";
+import { buildCentralPole, buildGalleryColumns, buildOuterShell, buildServiceRisers } from "./scenery.js";
+import { buildFacades } from "./facade.js";
 import { buildStation } from "./station.js";
 import { buildSafetySigns } from "./signs.js";
+import { buildDome } from "./dome.js";
 
-export function buildWorld(scene, layout) {
+export function buildWorld(scene, layout, { lightCount = 10, detailRange = 62 } = {}) {
   const structure = new THREE.Group();
+  // Named so tools/world-check.cjs can tell "this sightline ended on the
+  // silo's own shell" from "it ended on something inside the level".
+  structure.name = "structure";
   scene.add(structure);
   buildOuterShell(structure, layout);
   buildCentralPole(structure, layout);
-  buildServiceRisers(structure, layout);
-  const chunks = [];
+  buildGalleryColumns(structure, layout);
+  // Chunks are groups shown only near the player's height; `half` is how far
+  // one reaches above and below its centre.
+  const chunks = [...buildServiceRisers(structure, layout), buildDome(scene, layout)];
   const interactables = [];
   for (const slope of layout.slopes) {
     const group = new THREE.Group();
@@ -30,15 +37,13 @@ export function buildWorld(scene, layout) {
     scene.add(group);
     chunks.push({ group, y: station.y });
   });
+  // The facades behind the galleries, in blocks of levels like the risers'
+  // fittings. After the stations, whose wall panels they are fixed to.
+  chunks.push(...buildFacades(scene, layout, { range: detailRange }));
   // Signage spans every level, so it is one instanced batch per notice rather
   // than meshes inside the per-elevation chunks: 592 quads that are never
   // culled still cost less than 592 objects that are.
-  buildSafetySigns(scene, layout, {
-    radius: WORLD.landingR,
-    // Generated levels have an unbroken ring wall; only the authored ones cut
-    // doorways for their wings.
-    doorways: (station) => (station.generated ? [] : WING_OFFSETS.map((o) => (station.wingRotation || 0) + o)),
-  });
+  buildSafetySigns(scene, layout);
 
   scene.updateMatrixWorld(true);
   const sources = [];
@@ -49,7 +54,9 @@ export function buildWorld(scene, layout) {
   });
   for (const light of shadowLights) { scene.attach(light.target); scene.attach(light); }
   for (const source of sources) source.object.removeFromParent();
-  const lights = Array.from({ length: 10 }, () => {
+  // The pool is the whole per-pixel lighting bill, so its size is a quality
+  // setting (js/quality.js) rather than a constant.
+  const lights = Array.from({ length: lightCount }, () => {
     const light = new THREE.PointLight(0xffffff, 0, 16, 2);
     scene.add(light);
     return light;
@@ -65,7 +72,7 @@ export function buildWorld(scene, layout) {
   function update(position, dt = 0.05) {
     if (Math.hypot(position.x-lastX,position.y-lastY,position.z-lastZ) >= 0.5) {
       lastX=position.x;lastY=position.y;lastZ=position.z;
-      for (const chunk of chunks) chunk.group.visible = Math.abs(chunk.y-position.y) < 135;
+      for (const chunk of chunks) chunk.group.visible = Math.abs(chunk.y-position.y) < (chunk.range ?? 135) + (chunk.half || 0);
       const visible = Math.abs(position.y-layout.stations[0].y) < 135;
       if (visible && !shadowRegionVisible) for (const light of shadowLights) light.shadow.needsUpdate=true;
       shadowRegionVisible=visible;

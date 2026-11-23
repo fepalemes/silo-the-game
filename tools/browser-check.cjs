@@ -4,13 +4,14 @@ require('node:fs').mkdirSync('shots', { recursive: true });
 (async () => {
  const browser = await chromium.launch({ executablePath: process.env.CHROME || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: true, args: ['--enable-unsafe-swiftshader', '--use-angle=swiftshader'] });
  try {
+ // Generous screenshot timeouts: software rasteriser, seconds per frame.
  const page = await browser.newPage({ viewport: { width: 960, height: 640 } });
  const errors = [];
  page.on('pageerror', e => errors.push(e.message));
  page.on('console', m => { if(m.type()==='error' && !m.text().includes('404')) errors.push(m.text()); });
  await page.goto(`${process.env.BASE || 'http://localhost:8080'}/?bloom=0`);
  await page.waitForFunction(() => !document.getElementById('start-button').disabled, null, { timeout: 90000 });
- await page.screenshot({ path: 'shots/menu.png' });
+ await page.screenshot({ path: 'shots/menu.png', timeout: 120000 });
  await page.click('#start-button');
  await page.waitForFunction(() => document.pointerLockElement !== null);
  assert.equal(await page.locator('#start-screen').isVisible(), false);
@@ -26,7 +27,7 @@ require('node:fs').mkdirSync('shots', { recursive: true });
  const paused = await state();
  await page.waitForTimeout(300);
  assert.deepEqual(await state(), paused, 'pause freezes movement');
- await page.screenshot({ path: 'shots/pause.png' });
+ await page.screenshot({ path: 'shots/pause.png', timeout: 120000 });
  await page.click('#resume-button');
  await page.waitForFunction(() => document.pointerLockElement !== null);
  const resumed = await state(); await page.waitForTimeout(300);
@@ -46,7 +47,7 @@ require('node:fs').mkdirSync('shots', { recursive: true });
   await page.goto(`${process.env.BASE || 'http://localhost:8080'}/?view=${view}&hud=0&bloom=0`);
   await page.waitForFunction(async () => Boolean((await import('/js/main.js')).scene), null, { timeout: 90000 });
   await page.waitForTimeout(1500);
-  await page.screenshot({ path: `shots/${view}.png` });
+  await page.screenshot({ path: `shots/${view}.png`, timeout: 120000 });
   console.log('captured', view);
  }
  assert.deepEqual(errors, [], 'no runtime errors');

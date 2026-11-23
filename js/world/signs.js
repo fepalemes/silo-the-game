@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { makeSignTexture } from '../textures.js';
 import { wrapToPi } from '../mathutils.js';
+import { WORLD } from '../config.js';
 
 // The silo's printed matter, transcribed from the production's own sign sheet
 // (new-references 085-087). The wording is theirs; keeping it verbatim is the
@@ -23,11 +24,42 @@ function signMaterial(spec) {
   if (!materials.has(spec.id)) {
     materials.set(spec.id, new THREE.MeshBasicMaterial({
       map: makeSignTexture(spec),
-      side: THREE.DoubleSide,
       toneMapped: false,
     }));
   }
   return materials.get(spec.id);
+}
+
+// Lettering is single-sided everywhere, without exception. A two-sided plane
+// reads mirrored from behind, and "behind" turns up more often than it seems:
+// a sign hung in a doorway is seen from both rooms. Anything that can be seen
+// from the back gets a body, and a second face if it should read from there.
+const plateBody = new THREE.MeshStandardMaterial({ color: 0x1b1d1f, roughness: 0.55, metalness: 0.55 });
+
+export function letteringMaterial(texture, options = {}) {
+  return new THREE.MeshBasicMaterial({ map: texture, ...options });
+}
+
+// A plate with thickness: a dark metal body with the lettering on its front
+// (+Z before `rotY`) and, with `bothFaces`, again on its back.
+export function mountPlate(group, material, { w, h, x, y, z, rotY = 0, depth = 0.04, bothFaces = false }) {
+  const plate = new THREE.Group();
+  plate.position.set(x, y, z);
+  plate.rotation.y = rotY;
+  const body = new THREE.Mesh(new THREE.BoxGeometry(w + 0.05, h + 0.05, depth), plateBody);
+  const geometry = new THREE.PlaneGeometry(w, h);
+  const front = new THREE.Mesh(geometry, material);
+  front.position.z = depth / 2 + 0.004;
+  plate.add(body, front);
+  if (bothFaces) {
+    const back = new THREE.Mesh(geometry, material);
+    back.position.z = -(depth / 2 + 0.004);
+    back.rotation.y = Math.PI;
+    plate.add(back);
+  }
+  for (const part of plate.children) part.raycast = () => {};
+  group.add(plate);
+  return plate;
 }
 
 // Which way a plate must face to be read from inside the ring. A plane's front
@@ -38,9 +70,34 @@ export function inwardFacing(a) {
   return -Math.PI / 2 - a;
 }
 
-function place(batch, dummy, radius, a, y) {
-  dummy.position.set((radius - 0.08) * Math.cos(a), y, (radius - 0.08) * Math.sin(a));
-  dummy.rotation.set(0, inwardFacing(a), 0);
+// A point on one of the ring wall's panels. The wall is not a cylinder: it is
+// flat panels, each tangent to the nominal radius at its own centre. Anything
+// fixed to it has to be placed on the panel - at `offset` metres along it from
+// the centre, `proud` metres off its face - and turned to the panel's bearing.
+// Placing by bearing and radius instead leaves things floating up to 14cm off
+// the wall near a panel's edges, and tilted six degrees against it.
+export function onPanel(panel, offset = 0, proud = 0.012) {
+  const cos = Math.cos(panel.theta), sin = Math.sin(panel.theta), r = WORLD.landingR - proud;
+  return { x: r * cos - offset * sin, z: r * sin + offset * cos, rotY: inwardFacing(panel.theta) };
+}
+
+// The free panel nearest a bearing: not a door, not a porthole, and not
+// already carrying something. Claims it, so two plates never share a spot.
+export function claimPanel(station, bearing, reach = 0.6) {
+  let best = null;
+  for (const panel of station.panels || []) {
+    if (panel.kind !== 'blank' || panel.taken) continue;
+    const off = Math.abs(wrapToPi(panel.theta - bearing));
+    if (off <= reach && (!best || off < best.off)) best = { panel, off };
+  }
+  if (best) best.panel.taken = true;
+  return best?.panel || null;
+}
+
+function place(batch, dummy, panel, y) {
+  const at = onPanel(panel);
+  dummy.position.set(at.x, y, at.z);
+  dummy.rotation.set(0, at.rotY, 0);
   dummy.scale.setScalar(1);
   dummy.updateMatrix();
   batch.matrices.push(dummy.matrix.clone());
@@ -79,33 +136,29 @@ export function shopSign(id, headline, lines = []) {
 // landing where the stair arrives - which is what notices 1 and 3 are literally
 // about. One InstancedMesh per notice covers all 148 levels, so the whole
 // silo's signage costs four draw calls rather than six hundred meshes.
-export function buildSafetySigns(scene, layout, { radius, doorways }) {
+export function buildSafetySigns(scene, layout) {
   const bearings = [0.55, 2.35, 3.9, 5.3];
   const dummy = new THREE.Object3D();
   const batches = SAFETY_NOTICES.map((spec) => ({ spec, matrices: [] }));
 
-  // A sign only exists if there is wall behind it. The ring wall is broken by a
-  // doorway at each of a level's wings, and a plate dropped into one of those
-  // openings hangs in mid-air.
-  const onWall = (station, a) => !doorways(station).some((w) => Math.abs(wrapToPi(a - w)) < 0.22);
-
+  // A notice goes on the nearest bare wall panel to where it is wanted (see
+  // claimPanel): never across a door or a porthole, never in a wing's doorway,
+  // and flat against the panel rather than hovering off a curve that is not
+  // there. Where no bare panel is near enough, the notice is simply left out.
   layout.stations.forEach((station, index) => {
     // Notice 1 (the rail warning) belongs at the landing, facing whoever steps
     // off the stair; the rest are spaced around the ring. Bearings are relative
     // to this level's own landing, which no longer sits at a fixed compass
     // point, so the notices follow the stair round as it descends.
-    const railBearing = station.theta + 0.42;
-    if (onWall(station, railBearing)) {
-      place(batches[0], dummy, radius, railBearing, station.y + 1.75);
-    }
+    const rail = claimPanel(station, station.theta + 0.42);
+    if (rail) place(batches[0], dummy, rail, station.y + 1.75);
 
     for (let i = 0; i < bearings.length; i++) {
       // Rotate which notice appears where, level by level, so a player walking
       // down does not pass the same plate at the same bearing every floor.
       const batch = batches[1 + ((i + index) % (batches.length - 1))];
-      const a = station.theta + bearings[i];
-      if (!onWall(station, a)) continue;
-      place(batch, dummy, radius, a, station.y + (i % 2 ? 1.9 : 1.7));
+      const panel = claimPanel(station, station.theta + bearings[i]);
+      if (panel) place(batch, dummy, panel, station.y + (i % 2 ? 1.9 : 1.7));
     }
   });
 

@@ -1,10 +1,11 @@
 import * as THREE from "three";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { appendSweptSolid, meshData } from "../geometry.js";
 import { geometryFromData } from "./primitives.js";
-import { WORLD } from "../config.js";
+import { GALLERY_COLUMNS, WORLD } from "../config.js";
 import { lerp } from "../mathutils.js";
 import { makePlaqueTexture, mulberry32 } from "../textures.js";
-import { getStructureSurface } from "./materials.js";
+import { getStructureSurface, STRUCTURE_COLORS } from "./materials.js";
 import {
   HelixCurve,
   PARAPET_HEIGHT,
@@ -45,7 +46,7 @@ const COPING_HEIGHT = 0.09;
 // module-load side effects are not the place for that.
 let copingMat = null;
 function getCopingMat() {
-  if (!copingMat) copingMat = new THREE.MeshStandardMaterial({ ...getStructureSurface(), color: 0xb2ab99, roughness: 0.92, metalness: 0.03, side: THREE.DoubleSide });
+  if (!copingMat) copingMat = new THREE.MeshStandardMaterial({ ...getStructureSurface(), color: STRUCTURE_COLORS.coping, roughness: 0.92, metalness: 0.03, side: THREE.DoubleSide });
   return copingMat;
 }
 let capRailMat = null;
@@ -54,38 +55,152 @@ function getCapRailMat() {
   return capRailMat;
 }
 
-const WINDOW_PALETTE = [0xffc98a, 0xffb367, 0xf7e2b0, 0x9fd8ff, 0xd8eaff, 0xffa64d];
+// Lamplight behind the facades: warm, with the odd cooler room. Lit and dark
+// windows mix through per-instance colours, which is what stops a stacked
+// level from looking like a repeating texture.
+export const WINDOW_PALETTE = [0xffc27e, 0xffb46a, 0xffd29a, 0xffa95c, 0xf0cf9c, 0xc9d3d6];
 
-// A band of apartment windows around a facade. Lit and unlit ones are mixed
-// through per-instance colours, which is what stops a stacked level from
-// looking like a repeating texture.
-export function buildWindowBand(group, { radius, y, count, seed = 1, facingOut = false, litChance = 0.68 }) {
+// Rounded rectangle, centred, facing +Z.
+export function roundedRect(w, h, r, segments = 4) {
+  const shape = new THREE.Shape(), x = -w / 2, y = -h / 2;
+  shape.moveTo(x + r, y);
+  shape.lineTo(x + w - r, y); shape.quadraticCurveTo(x + w, y, x + w, y + r);
+  shape.lineTo(x + w, y + h - r); shape.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  shape.lineTo(x + r, y + h); shape.quadraticCurveTo(x, y + h, x, y + h - r);
+  shape.lineTo(x, y + r); shape.quadraticCurveTo(x, y, x + r, y);
+  return new THREE.ShapeGeometry(shape, segments);
+}
+
+// Bakes a flat colour into a geometry, so several parts with different
+// colours can share one draw call (see facadeWindowGeometry).
+//
+// `shade(y)`, if given, scales the colour by a vertex's height, for a cheap
+// gradient across the part.
+export function painted(geometry, hex, scale = 1, shade = null) {
+  const color = new THREE.Color(hex).multiplyScalar(scale);
+  const position = geometry.attributes.position;
+  const count = position.count;
+  const colors = new Float32Array(count * 3);
+  for (let k = 0; k < count; k++) {
+    const f = shade ? shade(position.getY(k)) : 1;
+    colors.set([color.r * f, color.g * f, color.b * f], k * 3);
+  }
+  geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+  return geometry;
+}
+
+// One window: a dark metal frame, the glass a centimetre in front of it, and a
+// cross of glazing bars in front of that, all with the soft corners of every
+// opening in the set (silo-19, the residential plates). The glass is white so
+// the per-instance colour decides what is behind it, brighter low down where a
+// room's lamp would be; frame and bars are near-black, so a lit window's spill
+// tints them only faintly and an unlit one reads as one dark opening. Without
+// the bars a lit rounded rectangle reads as a screen, not a window.
+let windowGeometry = null, windowMaterial = null;
+function facadeWindowGeometry() {
+  if (!windowGeometry) {
+    const frame = painted(roundedRect(1.38, 1.14, 0.26), 0xffffff, 0.09);
+    const glass = painted(roundedRect(1.16, 0.92, 0.18), 0xffffff, 1, (y) => 1.15 - (y + 0.46) * 0.6);
+    glass.translate(0, 0, 0.012);
+    const parts = [frame, glass];
+    for (const [w, h, x, y] of [[0.05, 0.92, 0, 0], [1.16, 0.045, 0, 0.16]]) {
+      const bar = painted(new THREE.PlaneGeometry(w, h), 0xffffff, 0.09);
+      bar.translate(x, y, 0.02);
+      parts.push(bar.toNonIndexed());
+    }
+    windowGeometry = mergeGeometries(parts.map((part) => (part.index ? part.toNonIndexed() : part)));
+    windowMaterial = new THREE.MeshBasicMaterial({ vertexColors: true });
+  }
+  return windowGeometry;
+}
+
+// A row of windows round the storey above a gallery, facing the shaft. This is
+// the band you look at across the void from the stair and the landings, and it
+// was a blank wall all the way down. One draw call per level.
+export function buildWindowBand(group, { radius, y, count, seed = 1, litChance = 0.6 }) {
   const rand = mulberry32(Math.floor(seed * 7919) >>> 0);
-  const geo = new THREE.PlaneGeometry(1.15, 0.72);
-  const mat = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, toneMapped: false });
-  const mesh = new THREE.InstancedMesh(geo, mat, count);
+  const mesh = new THREE.InstancedMesh(facadeWindowGeometry(), windowMaterial, count);
   const dummy = new THREE.Object3D();
   const color = new THREE.Color();
-
+  const phase = rand() * Math.PI * 2;
   for (let i = 0; i < count; i++) {
-    const theta = (i / count) * Math.PI * 2 + rand() * 0.02;
-    dummy.position.set(radius * Math.cos(theta), y, radius * Math.sin(theta));
-    // PlaneGeometry faces +Z; this turns it to face along the radius.
-    dummy.rotation.set(0, facingOut ? Math.PI / 2 - theta + Math.PI : Math.PI / 2 - theta, 0);
+    const theta = phase + (i / count) * Math.PI * 2;
+    // Placed by the band's own facets (96 of them), so the window lies flat on
+    // the wall instead of cutting through the chord between two facets.
+    dummy.position.set((radius - 0.035) * Math.cos(theta), y + (rand() < 0.25 ? 0.12 : 0), (radius - 0.035) * Math.sin(theta));
+    dummy.rotation.set(0, -Math.PI / 2 - theta, 0);
     dummy.updateMatrix();
     mesh.setMatrixAt(i, dummy.matrix);
-
-    if (rand() < litChance) {
-      const hex = WINDOW_PALETTE[Math.floor(rand() * WINDOW_PALETTE.length)];
-      color.setHex(hex).multiplyScalar(1.25 + rand() * 1.5);
-    } else {
-      color.setRGB(0.04, 0.045, 0.05); // dark, nobody home
-    }
+    if (rand() < litChance) color.setHex(WINDOW_PALETTE[Math.floor(rand() * WINDOW_PALETTE.length)]).multiplyScalar(0.55 + rand() * 0.45);
+    else color.setRGB(0.012, 0.013, 0.015);
     mesh.setColorAt(i, color);
   }
   mesh.instanceMatrix.needsUpdate = true;
-  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  mesh.instanceColor.needsUpdate = true;
+  mesh.name = "facade-windows";
+  mesh.raycast = () => {};
   group.add(mesh);
+  return mesh;
+}
+
+// The opal ring lamp round every gallery column, under every slab - the
+// single most recognisable fixture in the production (silo-2, silo-3,
+// silo-19). Level 1 has a hand-built version with real light behind it
+// (exemplar.js); this is the instanced one for the other 147, glow only, one
+// draw call per level.
+let pillarLampGeometry = null, pillarLampMaterial = null;
+export function buildPillarLamps(group, positions, y) {
+  if (positions.length === 0) return null;
+  if (!pillarLampGeometry) {
+    const R = GALLERY_COLUMNS.radius + 0.06;
+    // Lean: there are a hundred-odd of these in sight down the shaft.
+    const parts = [painted(new THREE.CylinderGeometry(R, R, 0.5, 20, 1, true), 0xffdcab, 1.25)];
+    for (const dy of [-0.28, 0.28]) {
+      const rim = painted(new THREE.CylinderGeometry(R + 0.03, R + 0.03, 0.07, 20, 1, true), 0x23262a);
+      rim.translate(0, dy, 0);
+      parts.push(rim);
+    }
+    // The cage of vertical ribs over the glass, flat strips facing out.
+    for (let k = 0; k < 10; k++) {
+      const a = (k * Math.PI) / 5;
+      const rib = painted(new THREE.PlaneGeometry(0.035, 0.52), 0x23262a);
+      rib.rotateY(Math.PI / 2 - a);
+      rib.translate((R + 0.006) * Math.cos(a), 0, (R + 0.006) * Math.sin(a));
+      parts.push(rib);
+    }
+    // Strip the attributes the parts do not all share, or the merge refuses.
+    for (const part of parts) part.deleteAttribute("uv");
+    pillarLampGeometry = mergeGeometries(parts.map((part) => part.toNonIndexed()));
+    pillarLampMaterial = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide });
+  }
+  const mesh = addInstancedBatch(group, pillarLampGeometry, pillarLampMaterial, positions.map((p) => ({ x: p.x, y, z: p.z })));
+  mesh.name = "pillar-lamps";
+  mesh.raycast = () => {};
+  return mesh;
+}
+
+// Strip lights under the slab over a gallery: a dark housing and a lit
+// diffuser, laid tangentially. One draw call per level.
+let soffitGeometry = null, soffitMaterial = null;
+export function buildSoffitLights(group, fittings) {
+  if (fittings.length === 0) return null;
+  if (!soffitGeometry) {
+    const housing = painted(new THREE.BoxGeometry(0.26, 0.1, 1.5), 0x23262a);
+    const diffuser = painted(new THREE.BoxGeometry(0.17, 0.03, 1.38), 0xffe7c4, 1.35);
+    diffuser.translate(0, -0.06, 0);
+    const parts = [housing, diffuser];
+    for (const z of [-0.5, 0.5]) {
+      const rod = painted(new THREE.BoxGeometry(0.02, 0.32, 0.02), 0x23262a);
+      rod.translate(0, 0.2, z);
+      parts.push(rod);
+    }
+    for (const part of parts) part.deleteAttribute("uv");
+    soffitGeometry = mergeGeometries(parts.map((part) => part.toNonIndexed()));
+    soffitMaterial = new THREE.MeshBasicMaterial({ vertexColors: true });
+  }
+  const mesh = addInstancedBatch(group, soffitGeometry, soffitMaterial, fittings.map((f) => ({ x: f.r * Math.cos(f.theta), y: f.y, z: f.r * Math.sin(f.theta), rotY: -f.theta })));
+  mesh.name = "soffit-lights";
+  mesh.raycast = () => {};
   return mesh;
 }
 
@@ -123,8 +238,7 @@ export function buildRingDoors(group, doors, { wallColor, accentColor }) {
   const plateGeo = new THREE.PlaneGeometry(0.46, 0.23);
   const platePool = doors.slice(0, PLATE_POOL_SIZE).map((d) =>
     new THREE.MeshBasicMaterial({
-      map: makePlaqueTexture([d.label], { width: 192, height: 96, fg: 0xe6dcbe, bg: 0x14161a }),
-      side: THREE.DoubleSide,
+      map: makePlaqueTexture([d.label], { width: 192, height: 96, fg: 0xe6dcbe, bg: 0x14161a })
     })
   );
   doors.forEach((d, i) => {
@@ -216,7 +330,9 @@ export function buildParapet(scene, thetaStart, thetaEnd, yStart, yEnd, radiusFn
     if (cap === "coping") appendSweptSolid(coping, { ...shape, inner: (t) => radius(t) - PARAPET_THICKNESS / 2 - 0.035, outer: (t) => radius(t) + PARAPET_THICKNESS / 2 + 0.035, bottom: (t) => y(t) + PARAPET_HEIGHT, top: (t) => y(t) + PARAPET_HEIGHT + COPING_HEIGHT });
     if (cap === "handrail") {
       const curve=new HelixCurve(span.start,span.end,y(0),y(1),PARAPET_HEIGHT+.16,radius);
-      const rail=new THREE.Mesh(new THREE.TubeGeometry(curve,shape.segments,.043,8,false),getCapRailMat());
+      // Half the wall's segments: a rail this thin needs no more to look round,
+      // and every flight in sight carries one.
+      const rail=new THREE.Mesh(new THREE.TubeGeometry(curve,Math.ceil(shape.segments/2),.043,6,false),getCapRailMat());
       rail.name='stair-handrail';scene.add(rail);
       const count=Math.max(1,Math.ceil((span.end-span.start)*radius(.5)/1.8));
       const brackets=Array.from({length:count+1},(_,i)=>{
@@ -227,10 +343,10 @@ export function buildParapet(scene, thetaStart, thetaEnd, yStart, yEnd, radiusFn
     }
     if (cap === "rail") {
       const curve = new HelixCurve(span.start, span.end, y(0), y(1), PARAPET_HEIGHT + 0.03, (t) => radius(t));
-      scene.add(new THREE.Mesh(new THREE.TubeGeometry(curve, shape.segments, 0.035, 6, false), getCapRailMat()));
+      scene.add(new THREE.Mesh(new THREE.TubeGeometry(curve, Math.ceil(shape.segments / 2), 0.035, 6, false), getCapRailMat()));
     }
   }
-  const wallMat = new THREE.MeshStandardMaterial({ ...getStructureSurface(), color: 0xb1b2a8, roughness: 0.96, metalness: 0.01, side: THREE.DoubleSide });
+  const wallMat = new THREE.MeshStandardMaterial({ ...getStructureSurface(), color: STRUCTURE_COLORS.guard, roughness: 0.96, metalness: 0.01, side: THREE.DoubleSide });
   scene.add(new THREE.Mesh(geometryFromData(wall), wallMat));
   if (coping.positions.length) scene.add(new THREE.Mesh(geometryFromData(coping), getCopingMat()));
 }

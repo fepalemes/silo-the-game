@@ -10,13 +10,28 @@ import { makeConcreteSurface, makeWorkshopSurface } from "../textures.js";
 // Light neutral so multiplying by a station's palette colour lands back on
 // roughly that colour, with the drawn grain/seams/streaks riding on top -
 // but not so light that the noise highlights clip to white.
-// The 3D cutaway's concrete is #8a8578 - warmer AND much darker than the cool
-// near-white 0xd4d4cf we had. Adopting it literally would drop the base 35%,
-// and this project has already shipped a "too dark" regression once. So take
-// the reference's warmth at our existing luminance instead: same hue ratios as
-// #8a8578, same brightness as before. Darkness is a lighting decision, not a
-// texture one - turn the exposure in main.js if it needs to come down.
-const SURFACE_BASE = 0xdbd3bf;
+// Neutral, so the hue comes from the tint (CONCRETE in config.js) alone. It
+// was the 3D cutaway's warm #8a8578 at this luminance for a while; measured
+// against the production stills that was the wrong call - in silo-2 and
+// silo-19 the concrete lit by ambient alone sits at hue ~195-230 with
+// saturation ~0.2, and only the lamps are warm. Darkness is a lighting
+// decision, not a texture one - turn the exposure in main.js if it needs to
+// come down.
+const SURFACE_BASE = 0xd4d5d3;
+
+// Every structural surface that is not a level's own walls and floors: the
+// stair, the guard walls, the pillars, the risers. One place, cool grey, so
+// the next adjustment of the silo's concrete is one edit.
+export const STRUCTURE_COLORS = {
+  tread: 0xa9afb3,
+  nosing: 0xb4b8ba,
+  coping: 0xaeb2b4,
+  guard: 0xa9afb3,
+  // The landing deck's and the bays' guard walls, a shade darker.
+  deckGuard: 0x868c90,
+  pillar: 0x9ca2a6,
+  riser: 0x737a7f,
+};
 
 // Multiplying a light neutral texture by a station's palette colour lands
 // noticeably darker than the palette colour itself, and MeshStandardMaterial
@@ -65,7 +80,7 @@ let structureSurfaceCache = null;
 
 export function getStructureSurface() {
   if (!structureSurfaceCache) {
-    const surface = makeConcreteSurface(0xb7b8b0, { seed: 4242, streaks: false, seams: false, normalStrength: 0.9, wear: 0.45 });
+    const surface = makeConcreteSurface(0xb8babb, { seed: 4242, streaks: false, seams: false, normalStrength: 0.9, wear: 0.45 });
     surface.map.repeat.set(1, 1);
     surface.normalMap.repeat.set(1, 1);
     structureSurfaceCache = surface;

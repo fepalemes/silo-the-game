@@ -1,12 +1,21 @@
 import { PLAYER_SPEED, WORLD } from "./config.js";
 import { resolveMove } from "./collision.js";
 import { clamp } from "./mathutils.js";
+import { alignRig, stepLocomotion, XR_COMFORT } from "./xr/locomotion.js";
 
 const MAX_PITCH = 1.5;
 
-// Pointer-lock FPS controller. Movement/collision math lives in collision.js;
-// this module only owns input, camera orientation and head-bob/footsteps.
-export function createPlayer({ camera, domElement, layout, initialState, onLockChange, onFootstep, onLockError, frozen = false }) {
+const IDLE = { moveX: 0, moveY: 0, turn: 0, brisk: false };
+
+// First-person controller. Movement/collision math lives in collision.js; this
+// module only owns input, camera orientation and head-bob/footsteps.
+//
+// It drives one of two bodies. On a screen it is a pointer-lock FPS camera. In
+// a headset (`rig` + `xr`, see js/xr/session.js) the headset owns the camera,
+// so what moves instead is `rig`, the group the camera hangs from - and there
+// is no eye height, pitch or head-bob to apply, because the player's own neck
+// supplies all three.
+export function createPlayer({ camera, domElement, layout, initialState, onLockChange, onFootstep, onLockError, frozen = false, rig = null, xr = null }) {
   const state = { level: null, ...initialState };
   let yaw = initialState.yaw ?? -Math.PI / 2;
   let pitch = initialState.pitch ?? 0;
@@ -17,6 +26,20 @@ export function createPlayer({ camera, domElement, layout, initialState, onLockC
   const keys = Object.create(null);
 
   let suspended = false;
+  let presenting = false;
+  let pose = { x: 0, z: 0, yaw: 0 };
+  let lastHead = null;
+  let strideLeft = XR_COMFORT.stride;
+  // "Active" is what the rest of the game means by playing: the mouse is
+  // captured, or a headset session is running. Reported on change only, so
+  // handing over from one to the other does not flash the pause screen.
+  let reported = false;
+  const isActive = () => locked || presenting;
+  function report() {
+    if (isActive() === reported) return;
+    reported = isActive();
+    if (onLockChange) onLockChange(reported);
+  }
   function clearKeys() { for (const key of Object.keys(keys)) delete keys[key]; }
   function onKeyDown(e) {
     if (!locked || suspended || e.repeat) return;
@@ -33,11 +56,11 @@ export function createPlayer({ camera, domElement, layout, initialState, onLockC
   function onPointerLockChange() {
     locked = document.pointerLockElement === domElement;
     clearKeys();
-    if (onLockChange) onLockChange(locked);
+    report();
   }
 
   function requestLock() {
-    if (frozen || locked) return;
+    if (frozen || locked || presenting) return;
     try {
       const request = domElement.requestPointerLock();
       request?.catch(() => onLockError?.());
@@ -57,7 +80,59 @@ export function createPlayer({ camera, domElement, layout, initialState, onLockC
 
   camera.rotation.order = "YXZ";
 
+  function enterXR() {
+    if (frozen || presenting || !rig || !xr) return false;
+    presenting = true;
+    // The head pose is not known until the first frame arrives; the rig is
+    // lined up under it then (see updateXR).
+    lastHead = null;
+    pose = { x: state.x, z: state.z, yaw };
+    strideLeft = XR_COMFORT.stride;
+    clearKeys();
+    if (locked) document.exitPointerLock();
+    report();
+    return true;
+  }
+
+  function exitXR() {
+    if (!presenting) return;
+    presenting = false;
+    // Keep facing wherever the player was last looking.
+    yaw = pose.yaw + (lastHead?.yaw || 0);
+    pitch = 0;
+    rig.position.set(0, 0, 0);
+    rig.rotation.y = 0;
+    clearKeys();
+    report();
+  }
+
+  function updateXR(dt) {
+    const head = xr.readHead();
+    const recentred = lastHead && Math.hypot(head.x - lastHead.x, head.z - lastHead.z) > XR_COMFORT.recentreJump;
+    if (!lastHead || recentred) pose = alignRig(state, head, pose.yaw);
+    lastHead = head;
+
+    // A record being read freezes the stick, never the head.
+    const input = suspended ? IDLE : xr.readInput();
+    const result = stepLocomotion(layout, state, pose, head, input, dt);
+    Object.assign(state, result.state);
+    pose = result.rig;
+    rig.position.set(pose.x, state.y, pose.z);
+    rig.rotation.y = pose.yaw;
+
+    const moving = result.walked > 1e-4;
+    if (moving) {
+      strideLeft -= result.walked;
+      if (strideLeft <= 0) {
+        strideLeft += XR_COMFORT.stride;
+        if (onFootstep) onFootstep();
+      }
+    } else strideLeft = XR_COMFORT.stride;
+    return { moving, sprinting: Boolean(input.brisk), travel: moving ? Math.min(1, Math.hypot(input.moveX, input.moveY)) : 0 };
+  }
+
   function update(dt) {
+    if (presenting) return updateXR(dt);
     // Debug viewpoints park the camera somewhere (possibly mid-air, over the
     // void) and skip collision entirely - see js/viewpoints.js.
     if (frozen) {
@@ -123,9 +198,28 @@ export function createPlayer({ camera, domElement, layout, initialState, onLockC
   return {
     update,
     isLocked: () => locked,
+    isActive,
+    isPresenting: () => presenting,
+    enterXR,
+    exitXR,
     requestLock,
     setSuspended: (value) => { suspended = value; clearKeys(); },
     getState: () => state,
-    snapshot: () => ({ x: state.x, y: state.y, z: state.z, theta: state.theta, level: state.level, yaw, pitch }),
+    // Puts the body somewhere else outright. In a headset the rig has to be
+    // lined up under the head again, or the next frame would try to walk the
+    // body back to where the head still appears to be.
+    // `yaw`/`pitch`, when given, turn the screen camera too - which is how
+    // tools/audit.cjs flies one page around the whole silo.
+    teleport: ({ yaw: nextYaw, pitch: nextPitch, ...next }) => {
+      Object.assign(state, next);
+      if (Number.isFinite(nextYaw)) yaw = nextYaw;
+      if (Number.isFinite(nextPitch)) pitch = clamp(nextPitch, -MAX_PITCH, MAX_PITCH);
+      lastHead = null;
+    },
+    snapshot: () => ({
+      x: state.x, y: state.y, z: state.z, theta: state.theta, level: state.level,
+      yaw: presenting ? pose.yaw + (lastHead?.yaw || 0) : yaw,
+      pitch: presenting ? 0 : pitch,
+    }),
   };
 }

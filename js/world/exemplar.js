@@ -1,6 +1,7 @@
 import * as THREE from 'three';
-import { WORLD, PARAPET_THICKNESS } from '../config.js';
+import { GALLERY_COLUMNS, WORLD, PARAPET_THICKNESS } from '../config.js';
 import { makePlaqueTexture, mulberry32 } from '../textures.js';
+import { letteringMaterial, mountPlate, onPanel } from './signs.js';
 import { workshopMaterial } from './materials.js';
 
 let kit;
@@ -47,7 +48,7 @@ function pipe(group, points, radius=.045) {
   return mesh(group,new THREE.TubeGeometry(new THREE.CatmullRomCurve3(points.map(p=>new THREE.Vector3(...p))),32,radius,8,false),materials().dark,0,0,0);
 }
 function sign(group, lines, w,h,x,y,z,rotation=0) {
-  const m=mesh(group,new THREE.PlaneGeometry(w,h),new THREE.MeshBasicMaterial({map:makePlaqueTexture(lines,{fg:0xd3c8a6,bg:0x303a30}),side:THREE.DoubleSide}),x,y,z);
+  const m=mesh(group,new THREE.PlaneGeometry(w,h),new THREE.MeshBasicMaterial({map:makePlaqueTexture(lines,{fg:0xd3c8a6,bg:0x303a30})}),x,y,z);
   m.rotation.y=rotation;return m;
 }
 
@@ -76,19 +77,28 @@ export function dressGallery(group, doors, pillars, station) {
       mesh(g,new THREE.CylinderGeometry(.037,.037,.06,12),m.brass,.96,1.42,.018).rotation.x=Math.PI/2;
     }
   }
+  // The gallery columns, where they pass the top gallery on their way up to
+  // the dome's drum: the ring lamp here has a real light, thrown out over
+  // the gallery rather than into the shaft.
+  const R=GALLERY_COLUMNS.radius;
   for(const p of pillars) {
-    contact(group,p.x,p.z,2.3,2.3,.36);
+    contact(group,p.x,p.z,2.8,2.8,.36);
     const opal=new THREE.MeshBasicMaterial({color:new THREE.Color(0xffe6bb).multiplyScalar(1.3)});
-    mesh(group,new THREE.CylinderGeometry(.46,.46,.38,24),opal,p.x,2.46,p.z);
-    for(const y of [2.24,2.68])mesh(group,new THREE.CylinderGeometry(.49,.49,.07,24),m.dark,p.x,y,p.z);
-    for(let i=0;i<8;i++)mesh(group,new THREE.BoxGeometry(.025,.4,.025),m.dark,p.x+.463*Math.cos(i*Math.PI/4),2.46,p.z+.463*Math.sin(i*Math.PI/4));
+    mesh(group,new THREE.CylinderGeometry(R+.06,R+.06,.5,28),opal,p.x,2.46,p.z);
+    for(const y of [2.18,2.74])mesh(group,new THREE.CylinderGeometry(R+.09,R+.09,.07,28),m.dark,p.x,y,p.z);
+    for(let i=0;i<10;i++)mesh(group,new THREE.BoxGeometry(.03,.52,.03),m.dark,p.x+(R+.064)*Math.cos(i*Math.PI/5),2.46,p.z+(R+.064)*Math.sin(i*Math.PI/5));
     const angle=Math.atan2(p.z,p.x);
     const light=new THREE.PointLight(0xffdfb0,22,9,2);
-    light.position.set(p.x-.58*Math.cos(angle),2.46,p.z-.58*Math.sin(angle));group.add(light);
-    for(const y of [.28,2.88])mesh(group,new THREE.CylinderGeometry(.46,.46,.045,20),m.dark,p.x,y,p.z);
+    light.position.set(p.x+(R+.3)*Math.cos(angle),2.46,p.z+(R+.3)*Math.sin(angle));group.add(light);
+    for(const y of [.28,3.3])mesh(group,new THREE.CylinderGeometry(R+.02,R+.02,.05,24),m.dark,p.x,y,p.z);
   }
   // A restrained landing stencil, readable on the approach from the stair.
-  sign(group,['CAFETERIA →','01 / SILO 18'],2.2,.7,WORLD.landingR-.5,2.1,1.5,-Math.PI/2);
+  // On the same panel as the sector map, flat against it (it used to hang half
+  // a metre off the wall).
+  if(station.platePanel) {
+    const at=onPanel(station.platePanel,.55,.03);
+    mountPlate(group,letteringMaterial(makePlaqueTexture(['CAFETERIA →','01 / SILO 18'],{fg:0xd3c8a6,bg:0x303a30})),{w:2.2,h:.7,x:at.x,y:2.1,z:at.z,rotY:at.rotY,depth:.04});
+  }
   const a=.5, r=18.8;
   const key=new THREE.SpotLight(0xffe1b0,65,15,1.05,.85,2);
   key.name='gallery-shadow';key.position.set(r*Math.cos(a),3.04,r*Math.sin(a));
@@ -100,59 +110,6 @@ export function dressGallery(group, doors, pillars, station) {
   mesh(group,new THREE.CylinderGeometry(.19,.26,.12,16),m.dark,key.position.x,3.17,key.position.z);
   mesh(group,new THREE.CylinderGeometry(.21,.21,.025,16),new THREE.MeshBasicMaterial({color:0xffe6be}),key.position.x,3.1,key.position.z);
   mesh(group,new THREE.CylinderGeometry(.022,.022,.17,8),m.dark,key.position.x,3.315,key.position.z);
-  group.traverse(o=>{if(o.isMesh && !o.material.transparent){o.castShadow=true;o.receiveShadow=true;}});
-}
-
-export function dressCafeteria(group, station, start, end, hw) {
-  const firstChild=group.children.length;
-  const m=materials(), H=WORLD.roomHeight, mid=(start+end)/2;
-  // Replace the flat screen's bare edges with a deep, rounded service bezel.
-  const bezel=panel(group,hw*1.76,H*.83,.17,.14,m.dark,end-.18,H*.52,0);bezel.rotation.y=-Math.PI/2;
-  // The existing screen lies in front of the bezel (toward the room).
-  for(const side of [-1,1]) {
-    mesh(group,new THREE.BoxGeometry(end-start,.13,.07),m.dark,mid,.12,side*(hw-.05));
-    mesh(group,new THREE.BoxGeometry(end-start,.22,.045),m.paint,mid,1.13,side*(hw-.025));
-    pipe(group,[[start+.25,2.85,side*(hw-.17)],[end-.6,2.85,side*(hw-.17)],[end-.3,2.65,side*(hw-.17)],[end-.3,.3,side*(hw-.17)]],.055);
-    for(let x=start+.8;x<end;x+=2) {
-      mesh(group,new THREE.BoxGeometry(.065,.2,.17),m.brass,x,2.85,side*(hw-.14));
-    }
-  }
-  // Overlaid wood tops retain the already-tested table/bench footprints.
-  for(const side of [-1,1])for(let row=0;row<2;row++) {
-    const x=start+4.7+row*2.7,z=side*2.9;
-    const top=panel(group,1.91,1.11,.045,.07,m.wood,x,.826,z);top.rotation.x=-Math.PI/2;
-    contact(group,x,z,3.1,3.5,.34);
-    for(const dz of [-.8,.8]) {
-      const seat=panel(group,1.91,.35,.035,.045,m.wood,x,.507,z+dz);seat.rotation.x=-Math.PI/2;
-    }
-    // Plates, reused enamel cups and a folded ration notice.
-    mesh(group,new THREE.CylinderGeometry(.14,.12,.022,24),m.ceramic,x-.45,.863,z+.15);
-    mesh(group,new THREE.CylinderGeometry(.065,.052,.13,20,1,true),m.ceramic,x+.43,.914,z-.15);
-    const handle=mesh(group,new THREE.TorusGeometry(.042,.012,6,12),m.ceramic,x+.5,.924,z-.15);handle.rotation.y=Math.PI/2;
-    const paper=sign(group,['RAÇÃO DIÁRIA','DEVOLVA A LOUÇA'],.3,.21,x+.1,.854,z+.17);paper.rotation.x=-Math.PI/2;paper.rotation.z=.18;
-  }
-  // Noticeboard and service grille sit flush on the wall, outside the aisle.
-  panel(group,1.6,1.1,.08,.06,m.wood,start+1.6,1.95,-hw+.09);
-  sign(group,['AVISOS DO TURNO','MANTENHA A PASSAGEM LIVRE'],1.35,.42,start+1.6,2.18,-hw+.15);
-  for(let i=0;i<3;i++)sign(group,[['ESCALA','RECICLAGEM','MANUTENÇÃO'][i],'SILO 18'],.37,.38,start+1.13+i*.46,1.75,-hw+.15);
-  panel(group,1.4,.48,.08,.08,m.dark,end-1.2,2.62,-hw+.1);
-  for(let i=0;i<8;i++)mesh(group,new THREE.BoxGeometry(1.2,.025,.04),m.paint,end-1.2,2.46+i*.046,-hw+.16);
-  // One static shadow map for this exemplar; the rest of the silo keeps its
-  // ten-light pool. Low fill stands in for bounced light from the screen.
-  const key=new THREE.SpotLight(0xffe5bb,85,19,1.12,.75,2);
-  key.position.set(mid,H-.22,0);key.target.position.set(mid+.5,0,0);
-  key.castShadow=true;key.shadow.mapSize.set(1024,1024);key.shadow.camera.near=.15;key.shadow.camera.far=19;
-  key.shadow.bias=-.00015;key.shadow.normalBias=.025;key.shadow.autoUpdate=false;key.shadow.needsUpdate=true;
-  group.add(key,key.target);
-  const bounce=new THREE.PointLight(0xc4d1cb,8,12,2);bounce.position.set(end-1,1.4,0);group.add(bounce);
-  for(const object of group.children.slice(firstChild)) {
-    if (!object.isMesh || object.material.transparent) continue;
-    object.updateMatrix();object.geometry.computeBoundingBox();
-    const box=object.geometry.boundingBox.clone().applyMatrix4(object.matrix);
-    if(box.max.y>.18 && box.min.y<1.8) {
-      station.obstacles.push({x:(box.min.x+box.max.x)/2,z:(box.min.z+box.max.z)/2,hw:(box.max.x-box.min.x)/2,hd:(box.max.z-box.min.z)/2,angle:group.userData.collision.angle});
-    }
-  }
   group.traverse(o=>{if(o.isMesh && !o.material.transparent){o.castShadow=true;o.receiveShadow=true;}});
 }
 

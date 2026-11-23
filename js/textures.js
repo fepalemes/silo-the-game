@@ -577,7 +577,9 @@ export function makeWorkshopSurface(kind, { size = 256, seed = 83 } = {}) {
   const ctx = canvas.getContext('2d'), hc = height.getContext('2d'), rc = rough.getContext('2d');
   const color = ctx.createImageData(size, size), relief = hc.createImageData(size, size), roughness = rc.createImageData(size, size);
   const noise = makeTilingNoise(12, rand);
-  const palette = { stone: [164, 163, 148], paint: [115, 124, 109], wood: [115, 103, 83] }[kind];
+  // Stone is neutral: its hue comes from the floor tint it is multiplied by (a
+  // yellowish base turned the level 1 floors olive under the grey palette).
+  const palette = { stone: [162, 163, 162], paint: [115, 124, 109], wood: [115, 103, 83] }[kind];
   for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
     const i = (y * size + x) * 4, n = noise(x / size, y / size);
     let v = (n - .5) * 18 + (rand() - .5) * 10, r = 210, h = 128;
@@ -602,16 +604,23 @@ export function makeWorkshopSurface(kind, { size = 256, seed = 83 } = {}) {
 
 // Original, game-specific sector diagram inspired by the set's transit maps.
 // Labels describe playable destinations, not a copied or purported official map.
-export function makeSectorMapTexture(level, name) {
-  const canvas=document.createElement('canvas');canvas.width=384;canvas.height=768;
+//
+// This is the level sign of the production (new-references 010): a tall dark
+// green plate, the level number huge in a paler band across its head, the
+// sector diagram underneath. Every level carries one. `labels` are the stops on
+// the diagram; `scale` shrinks the canvas for the ~130 generated levels, whose
+// plates would otherwise be most of the silo's texture memory.
+export function makeSectorMapTexture(level, name, { labels = null, scale = 1 } = {}) {
+  const canvas=document.createElement('canvas');canvas.width=Math.round(384*scale);canvas.height=Math.round(768*scale);
   const c=canvas.getContext('2d');
+  c.scale(scale,scale);
   c.fillStyle='#424b46';c.fillRect(0,0,384,768);
   c.fillStyle=level<50?'#777b63':'#64717c';c.fillRect(0,0,384,185);
   c.textAlign='center';c.fillStyle='#eee5cb';c.font='bold 120px Arial';c.fillText(String(level).padStart(2,'0'),192,135);
   c.font='17px Arial';c.fillText(name.toUpperCase(),192,222);
   c.strokeStyle='#d1c9ac';c.lineWidth=3;
   c.beginPath();c.moveTo(192,275);c.lineTo(192,640);c.stroke();
-  const labels=level===28?['APARTAMENTOS','LAVANDERIA','DEPÓSITO','OFICINA']:['CAFETERIA','GALERIA','SERVIÇOS'];
+  labels ||= level===28?['APARTAMENTOS','LAVANDERIA','DEPÓSITO','OFICINA']:['CAFETERIA','XERIFE','SAÍDA CONTROLADA','GALERIA'];
   labels.forEach((label,i)=>{
     const y=310+i*80,right=i%2===0,x=right?304:80;
     c.beginPath();c.moveTo(192,y);c.lineTo(x,y);c.stroke();

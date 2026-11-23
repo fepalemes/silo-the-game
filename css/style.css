@@ -301,3 +301,7 @@ button.secondary { margin-top:12px;background:transparent;color:#d8caac; }
 button.secondary:hover { color:#1c241e; }
 @media(max-height:600px) { #mission-panel { top:12px;padding:10px 14px; } #mission-steps { margin:5px 0; } #mission-panel .eyebrow { display:none; } }
 @media(max-width:650px) { #mission-panel { left:15px; } #save-notice { right:15px;bottom:10px;max-width:170px; } #level-info { left:15px;bottom:52px; } #pause-screen .panel { padding:24px; } }
+
+/* While a headset session runs the canvas shows both eyes side by side; the flat HUD has its own version inside the scene (js/xr/hud.js). */
+body.in-headset #hud, body.in-headset #vignette { visibility: hidden; }
+#vr-hint { margin-top: 12px; }

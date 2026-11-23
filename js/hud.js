@@ -1,6 +1,20 @@
 import { zoneForLevel } from "./config.js";
 import { clamp, lerp } from "./mathutils.js";
 
+// The three lines that say where the player is. Shared with the headset HUD
+// (js/xr/hud.js), which has to draw the same thing without the DOM.
+export function levelLabels(info) {
+  const station = info.station;
+  const stair = Boolean(info.fromStation);
+  const lvl = stair ? Math.round(lerp(info.fromStation.level, info.toStation.level, info.progress)) : station.level;
+  return {
+    key: `${stair}:${lvl}:${station.id}`,
+    name: stair ? "ESCADARIA CENTRAL" : station.name,
+    sub: stair ? `Nível ${info.fromStation.level} ↔ ${info.toStation.level}` : station.subtitle,
+    number: station.isSublevel ? `SUBSOLO ${lvl - 144} · ABAIXO DO 144` : `NÍVEL ${String(lvl).padStart(3, "0")} / 144 · ${zoneForLevel(lvl).name}`,
+  };
+}
+
 export function initHud() {
   const el = Object.fromEntries(["start-screen", "pause-screen", "hud", "level-name", "level-sub", "level-number", "depth-marker", "interact-prompt", "lore-panel", "lore-title", "lore-body", "start-button", "status"].map((id) => [id, document.getElementById(id)]));
   let lastLocation = "", lastDepth = "";
@@ -21,15 +35,13 @@ export function initHud() {
     if (paused) document.getElementById("resume-button").focus();
   }
   function setLocation(info) {
-    const station = info.station;
-    const stair = Boolean(info.fromStation);
-    const lvl = stair ? Math.round(lerp(info.fromStation.level, info.toStation.level, info.progress)) : station.level;
-    const key = `${stair}:${lvl}:${station.id}`;
-    if (key === lastLocation) return;
-    lastLocation = key;
-    el["level-name"].textContent = stair ? "ESCADARIA CENTRAL" : station.name;
-    el["level-sub"].textContent = stair ? `Nível ${info.fromStation.level} ↔ ${info.toStation.level}` : station.subtitle;
-    el["level-number"].textContent = station.isSublevel ? `SUBSOLO ${lvl - 144} · ABAIXO DO 144` : `NÍVEL ${String(lvl).padStart(3, "0")} / 144 · ${zoneForLevel(lvl).name}`;
+    const labels = levelLabels(info);
+    if (labels.key === lastLocation) return null;
+    lastLocation = labels.key;
+    el["level-name"].textContent = labels.name;
+    el["level-sub"].textContent = labels.sub;
+    el["level-number"].textContent = labels.number;
+    return labels;
   }
   function setDepth(fraction) {
     const depth = `${(clamp(fraction, 0, 1) * 100).toFixed(2)}%`;

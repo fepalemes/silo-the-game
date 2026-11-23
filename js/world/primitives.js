@@ -95,6 +95,9 @@ export function addGlow(group, { x, y, z, r = 0.09, color = 0xffffff, mount = "n
     const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.15, 0.06, 10), HARDWARE);
     foot.position.set(x, baseY + 0.03, z);
     group.add(foot);
+    // A lamp standard is something you walk into, not through.
+    const collision = group.userData.collision;
+    if (collision) collision.station.obstacles.push({ x, z, hw: 0.15, hd: 0.15, angle: collision.angle });
   }
   return bulb;
 }

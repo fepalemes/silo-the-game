@@ -1,0 +1,14 @@
+# Only index.html, css/, js/ and the exterior image go into the image (see
+# Dockerfile); keeping the rest out of the build context keeps builds fast.
+.git
+.DS_Store
+node_modules
+shots
+certs
+references
+new-references
+docs
+test
+tools
+README.md
+assets/README.md

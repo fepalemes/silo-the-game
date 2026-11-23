@@ -113,6 +113,25 @@ export function dressAlley(group,box,sign) {
     }
   }
 
+  // --- Angled volumes ---------------------------------------------------------
+  // Not every block in the set meets the alley square-on (new-references
+  // 029-039): bay windows cant out of the upper storeys on splayed sides, so
+  // the canyon's skyline breaks into angles. Above the gallery, never entered.
+  const bay=new THREE.Shape();
+  bay.moveTo(-1.05,0);bay.lineTo(1.05,0);bay.lineTo(.62,.62);bay.lineTo(-.62,.62);bay.lineTo(-1.05,0);
+  const bayGeo=new THREE.ExtrudeGeometry(bay,{depth:1.5,bevelEnabled:false});
+  bayGeo.rotateX(-Math.PI/2);
+  const bayMat=new THREE.MeshStandardMaterial({...getWallSurface(0),color:0x8f8b78,roughness:.92,metalness:.03,side:THREE.DoubleSide});
+  for(const [x,side] of [[39.2,1],[45.2,-1],[50.4,1]]) {
+    const m=new THREE.Mesh(bayGeo,bayMat);
+    m.position.set(x,5.6,side*(P.half-.55));
+    m.rotation.y=side>0?0:Math.PI;
+    m.raycast=()=>{};group.add(m);
+    // Its windows: one on the front, one on each canted cheek.
+    window(x,6.35,side*(P.half-1.18),side>0?Math.PI:0,.95,.8,true);
+    for(const e of [-1,1]) window(x+e*.84,6.35,side*(P.half-.86),(side>0?Math.PI:0)-e*side*Math.PI/4,.42,.7,false);
+  }
+
   // --- External stairs up to the galleries -----------------------------------
   // Solid volumes, so their footprint comes from the shared plan and the width
   // check accounts for them. Scenic in the sense that the gallery above is not
@@ -146,7 +165,7 @@ export function dressAlley(group,box,sign) {
     bulb.position.set(x,4.86,0);bulb.raycast=()=>{};group.add(bulb);
     // An emissive bulb lights nothing on its own. These are the alley's main
     // source, so they carry real lights; the pool picks whichever are nearest.
-    const lamp=new THREE.PointLight(0xffd2a0,20,11,2);lamp.position.set(x,4.6,0);group.add(lamp);
+    const lamp=new THREE.PointLight(0xffd2a0,13,11,2);lamp.position.set(x,4.6,0);group.add(lamp);
   }
   // A spine cable linking them, so the lamps are hung from something.
   const spine=new THREE.Mesh(new THREE.CylinderGeometry(.015,.015,19.2,4),RAIL);
@@ -193,6 +212,10 @@ function dressPlaza(group,box,sign,window,face) {
   for(const side of [-1,1]) {
     // Return walls from the corridor mouth out to the square's full width.
     face(q.x0,h/2,side*(q.half+P.half)/2,.22,h,q.half-P.half,0x8c8878);
+    // The head of the alley's mouth, as in the court (residential-court.js).
+    // The head over the alley's mouth, from the square's ceiling up to the
+    // alley's canyon (residential.js), as in the court.
+    if(side>0)face(q.x0,(h+P.canyon)/2,0,.22,P.canyon-h,P.half*2,0x8c8878);
     face(cx,h/2,side*q.half,q.x1-q.x0,h,.22,0x8c8878);
     // Two storeys of facade looking onto the square.
     for(const x of [cx-1.6,cx+1.6]) {

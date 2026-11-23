@@ -26,12 +26,14 @@ fs.mkdirSync('shots',{recursive:true});
     moveTo(18*Math.cos(a),-18*Math.sin(a));
     for(let turn=0;turn<=a+.03;turn+=.03)moveTo(18*Math.cos(Math.min(turn,a)-a),18*Math.sin(Math.min(turn,a)-a));
     moveTo(23,0);
-    moveTo(34.1,0);moveTo(34.1,-1.3);moveTo(37.5,-1.3);moveTo(37.5,0);moveTo(43.2,0);
+    // Straight down the cafeteria's central aisle to the screen.
+    const far=WORLD.landingR+WORLD.corridorLen+st.roomDepth;
+    moveTo(34.6,0);moveTo(far-1.6,0);
     const localX=state.x*Math.cos(a)+state.z*Math.sin(a);
-    return{point,shadow,ready,enabled:renderer.shadowMap.enabled,localX,y:state.y};
+    return{point,shadow,ready,enabled:renderer.shadowMap.enabled,localX,y:state.y,far};
    });
    assert.equal(result.point,10);assert.equal(result.shadow,2);assert.equal(result.enabled,true);assert.equal(result.ready,true);
-   assert(result.localX>43,'cafeteria remains accessible past the console and tables');assert(Math.abs(result.y)<1e-6);
+   assert(result.localX>result.far-2,'the aisle through the cafeteria reaches the screen');assert(Math.abs(result.y)<1e-6);
    await page.screenshot({path:`shots/exemplar-${view}.png`});console.log('verified',view,result);
   }
   // A missing asset retains the procedural image and does not block play.

@@ -7,10 +7,14 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "test": "node test/layout.test.mjs && node test/player.test.mjs && node test/lightpool.test.mjs && node test/progress.test.mjs && node test/residential.test.mjs",
+    "dev:https": "HTTPS=1 node server.js",
+    "test": "node test/layout.test.mjs && node test/player.test.mjs && node test/lightpool.test.mjs && node test/progress.test.mjs && node test/residential.test.mjs && node test/xr.test.mjs",
     "test:exemplar": "node tools/exemplar-check.cjs",
     "test:browser": "node tools/browser-check.cjs && node tools/browser-interaction.cjs",
-    "test:residential": "node tools/residential-check.cjs"
+    "test:residential": "node tools/residential-check.cjs",
+    "test:xr": "node tools/xr-check.cjs",
+    "test:world": "node tools/world-check.cjs",
+    "audit": "node tools/audit.cjs"
   },
   "devDependencies": {
     "playwright-core": "^1.63.0"

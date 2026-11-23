@@ -1,7 +1,8 @@
 import * as THREE from "three";
-import { WORLD } from "../config.js";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
+import { WORLD, RISERS, DOME, GALLERY_COLUMNS } from "../config.js";
 
-import { getStructureSurface, getWallSurface, resolveSurface } from "./materials.js";
+import { getStructureSurface, getWallSurface, resolveSurface, STRUCTURE_COLORS } from "./materials.js";
 import { addInstancedBatch, buildBandGeometry } from "./primitives.js";
 
 
@@ -15,22 +16,23 @@ import { addInstancedBatch, buildBandGeometry } from "./primitives.js";
 // The service risers are the only full-height structure standing in the open
 // void, so they double as the anchor the void braces reach for - both live off
 // these constants.
-const RISER_R = WORLD.ringInnerR - 0.85;
-const RISER_ANGLES = [0.6, 2.1, 3.6, 5.1];
+const RISER_R = RISERS.r;
+const RISER_ANGLES = RISERS.angles;
 
 export function buildServiceRisers(scene, layout) {
   const stations = layout.stations;
   const riserR = RISER_R;
   const angles = RISER_ANGLES;
-  const pipeMat = new THREE.MeshStandardMaterial({ color: 0x777466, roughness: 0.92, metalness: 0.08, side: THREE.DoubleSide });
+  const pipeMat = new THREE.MeshStandardMaterial({ color: STRUCTURE_COLORS.riser, roughness: 0.92, metalness: 0.08, side: THREE.DoubleSide });
   const stripMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0xbfe4ff).multiplyScalar(1.9) });
 
-  // One unbroken pipe per angle, top of the silo to the bottom. These stand at
-  // r = 8.6, which is inside the open void - there is no slab at that radius at
+  // One unbroken pipe per angle, top of the silo to the bottom. These stand
+  // inside the open void (see RISERS in config.js) - there is no slab at that radius at
   // ANY height to hide a joint behind, so the previous one-segment-per-station-
   // gap version left every pipe visibly dead-ending in mid-air 1.2m under each
   // floor. A riser that simply runs the whole way has nothing to explain.
-  const top = stations[0].y + WORLD.roomHeight;
+  // Up to the dome's catwalk, which they carry (dome.js).
+  const top = stations[0].y + WORLD.roomHeight + DOME.drum;
   const bottom = stations[stations.length - 1].y - 1;
   const h = top - bottom;
   const midY = (top + bottom) / 2;
@@ -39,30 +41,48 @@ export function buildServiceRisers(scene, layout) {
     const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.62, h, 12), pipeMat);
     pipe.position.set(riserR * Math.cos(angle), midY, riserR * Math.sin(angle));
     scene.add(pipe);
-
-    // Short caged opal fixtures at each floor, as in the shaft stills.
-    // Continuous blue neon strips made the silo look like a spaceship.
-    const lamps = stations.map((st) => ({ x: riserR * Math.cos(angle), y: st.y + 2.5, z: riserR * Math.sin(angle) }));
-    addInstancedBatch(scene, new THREE.CylinderGeometry(0.66, 0.66, 0.7, 16), new THREE.MeshBasicMaterial({ color: new THREE.Color(0xffdfad).multiplyScalar(1.7) }), lamps);
-    const bands = lamps.flatMap((p) => [-0.36, 0.36].map((dy) => ({ ...p, y: p.y + dy })));
-    addInstancedBatch(scene, new THREE.CylinderGeometry(0.72, 0.72, 0.09, 16), pipeMat, bands);
-    const bars = lamps.flatMap((p) => Array.from({ length: 8 }, (_, i) => ({ x: p.x + 0.67 * Math.cos(i * Math.PI / 4), y: p.y, z: p.z + 0.67 * Math.sin(i * Math.PI / 4) })));
-    addInstancedBatch(scene, new THREE.BoxGeometry(0.035, 0.72, 0.035), pipeMat, bars);
-    for (const p of lamps) {
-      const light = new THREE.PointLight(0xffdfb2, 35, 19, 2);
-      light.position.set(p.x - Math.cos(angle), p.y, p.z - Math.sin(angle));
-      scene.add(light);
-    }
-
-    // Flange collars at every floor level, so the pipe reads as jointed
-    // sections rather than one extruded tube.
-    const collars = [];
-    for (const st of stations) {
-      collars.push({ x: riserR * Math.cos(angle), y: st.y, z: riserR * Math.sin(angle) });
-      collars.push({ x: riserR * Math.cos(angle), y: st.y + WORLD.roomHeight, z: riserR * Math.sin(angle) });
-    }
-    addInstancedBatch(scene, new THREE.CylinderGeometry(0.78, 0.78, 0.36, 12), pipeMat, collars);
   }
+
+  // The fixtures on them - a caged opal lamp at every floor (continuous blue
+  // neon strips made the silo look like a spaceship) and flange collars at
+  // every floor and ceiling, so each pipe reads as jointed sections. They come
+  // in blocks of a dozen levels, every riser in one batch per block, and each
+  // block is a chunk that hides with the floors around it (index.js). One
+  // batch for the whole silo height was drawn in full from anywhere - about
+  // 300k triangles for fixtures a kilometre away.
+  const BLOCK = 12;
+  const lampGeo = new THREE.CylinderGeometry(0.66, 0.66, 0.7, 16);
+  const lampMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0xffdfad).multiplyScalar(1.7) });
+  const bandGeo = new THREE.CylinderGeometry(0.72, 0.72, 0.09, 16);
+  const barGeo = new THREE.BoxGeometry(0.035, 0.72, 0.035);
+  const collarGeo = new THREE.CylinderGeometry(0.78, 0.78, 0.36, 12);
+  const blocks = [];
+  for (let first = 0; first < stations.length; first += BLOCK) {
+    const slice = stations.slice(first, first + BLOCK);
+    const group = new THREE.Group();
+    scene.add(group);
+    const lamps = [], bands = [], bars = [], collars = [];
+    for (const angle of angles) {
+      const x = riserR * Math.cos(angle), z = riserR * Math.sin(angle);
+      for (const st of slice) {
+        const lamp = { x, y: st.y + 2.5, z };
+        lamps.push(lamp);
+        for (const dy of [-0.36, 0.36]) bands.push({ ...lamp, y: lamp.y + dy });
+        for (let i = 0; i < 8; i++) bars.push({ x: x + 0.67 * Math.cos(i * Math.PI / 4), y: lamp.y, z: z + 0.67 * Math.sin(i * Math.PI / 4) });
+        collars.push({ x, y: st.y, z }, { x, y: st.y + WORLD.roomHeight, z });
+        const light = new THREE.PointLight(0xffdfb2, 35, 19, 2);
+        light.position.set(x - Math.cos(angle), lamp.y, z - Math.sin(angle));
+        group.add(light);
+      }
+    }
+    addInstancedBatch(group, lampGeo, lampMat, lamps);
+    addInstancedBatch(group, bandGeo, pipeMat, bands);
+    addInstancedBatch(group, barGeo, pipeMat, bars);
+    addInstancedBatch(group, collarGeo, pipeMat, collars);
+    const top = slice[0].y + WORLD.roomHeight, bottom = slice[slice.length - 1].y;
+    blocks.push({ group, y: (top + bottom) / 2, half: (top - bottom) / 2 });
+  }
+  return blocks;
 }
 
 // Coffered ceiling: radial ribs plus a couple of concentric ring beams under
@@ -134,18 +154,44 @@ export function buildOuterShell(scene, layout) {
 }
 
 
+// The gallery columns (config.js GALLERY_COLUMNS), each one piece from the
+// bottom of the silo to the top level's ceiling, where the dome's drum stands
+// on them. Twelve meshes for the whole silo: a per-level column would be 1,776
+// objects, and a stack of short ones never reads as one column anyway.
+export function buildGalleryColumns(scene, layout) {
+  const top = layout.stations[0].y + WORLD.roomHeight;
+  const bottom = layout.stations[layout.stations.length - 1].y - 0.6;
+  const surface = resolveSurface(getStructureSurface(), [3, (top - bottom) / 3.5]);
+  const mat = new THREE.MeshStandardMaterial({ map: surface.map, normalMap: surface.normalMap, color: STRUCTURE_COLORS.pillar, roughness: 0.86, metalness: 0.04 });
+  const geometry = new THREE.CylinderGeometry(GALLERY_COLUMNS.radius, GALLERY_COLUMNS.radius, top - bottom, 28, 1, true);
+  for (const a of GALLERY_COLUMNS.angles) {
+    const column = new THREE.Mesh(geometry, mat);
+    column.position.set(GALLERY_COLUMNS.r * Math.cos(a), (top + bottom) / 2, GALLERY_COLUMNS.r * Math.sin(a));
+    column.name = "gallery-column";
+    scene.add(column);
+  }
+}
+
 export function buildCentralPole(scene, layout) {
-  // Has to pierce the top station's ceiling and the bottom station's floor,
-  // not merely get close: ending it "3m above the top floor" left it 0.4m
-  // shy of a 3.4m ceiling, so from the top hall the pole visibly stopped in
-  // mid-air just below the roof.
-  const top = layout.stations[0].y + WORLD.roomHeight + 1;
+  // The stair's core, from the bottom of the silo to the top level's ceiling;
+  // above that it carries on into the dome (dome.js) to the great lamp. It was
+  // a 0.45m pole standing in an empty 1.7m void; in every reference the stair
+  // winds round a solid column, with conduits running up its face.
+  const top = layout.stations[0].y + WORLD.roomHeight + 0.01;
   const bottom = layout.stations[layout.stations.length - 1].y - 3;
-  const geo = new THREE.CylinderGeometry(0.42, 0.48, top - bottom, 16);
-  const mat = new THREE.MeshStandardMaterial({ ...getStructureSurface(), color: 0x8d949c, roughness: 0.62, metalness: 0.28, side: THREE.DoubleSide });
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.position.set(0, (top + bottom) / 2, 0);
-  scene.add(mesh);
+  // Texture repeated every few metres up the shaft, not stretched over it.
+  const surface = resolveSurface(getStructureSurface(), [5, (top - bottom) / 4]);
+  const mat = new THREE.MeshStandardMaterial({ map: surface.map, normalMap: surface.normalMap, color: 0x8d949c, roughness: 0.8, metalness: 0.05 });
+  const column = new THREE.Mesh(new THREE.CylinderGeometry(DOME.column, DOME.column, top - bottom, 32), mat);
+  column.position.set(0, (top + bottom) / 2, 0);
+  scene.add(column);
+  const pipes = [];
+  for (const a of [0.2, 0.32, 0.44, 3.3]) {
+    const pipe = new THREE.CylinderGeometry(0.06, 0.06, top - bottom, 8);
+    pipe.translate((DOME.column + 0.08) * Math.cos(a), (top + bottom) / 2, (DOME.column + 0.08) * Math.sin(a));
+    pipes.push(pipe);
+  }
+  scene.add(new THREE.Mesh(mergeGeometries(pipes), new THREE.MeshStandardMaterial({ color: 0x4a5056, roughness: 0.5, metalness: 0.3 })));
 }
 
 // ---------------------------------------------------------------------------

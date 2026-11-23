@@ -2,8 +2,9 @@
 
 Protótipo de exploração em primeira pessoa para navegador, inspirado na estética
 da série *Silo* (Apple TV+): concreto bruto, uma escadaria em espiral central
-que atravessa todos os andares, e uma paleta que muda conforme você desce —
-mais fria e limpa no topo, mais quente e suja perto do fundo.
+que atravessa todos os andares, e o mesmo concreto cinza do topo ao fundo,
+mais claro e limpo em cima, mais escuro e úmido embaixo. Cada setor se
+distingue pela cor da sua luz e pelo que tem dentro, como na série.
 
 Isto é um fã-projeto não-oficial. Todo o visual (texturas, modelos, sons) é
 gerado por código a partir da estética de referência — nenhuma imagem ou
@@ -21,6 +22,29 @@ npm start
 
 Isso sobe um servidor estático simples em `http://localhost:8080`. Abra essa
 URL no Chrome, Edge, Firefox ou Safari recentes.
+
+### Publicando (Docker / Dokploy)
+
+O jogo é estático: em produção, um nginx serve só a página, o CSS, os
+módulos e a imagem do exterior (`Dockerfile`, `docker/nginx.conf`), com
+gzip, cache revalidado a cada carga (um deploy aparece na hora) e um
+`/healthz` para o healthcheck do contêiner. O servidor de desenvolvimento,
+testes, docs e referências ficam fora da imagem (~51 MB). O three.js vem da
+CDN do import map, então o navegador do jogador precisa de internet.
+
+```bash
+docker build -t silo-the-game .
+docker run --rm -p 8080:80 silo-the-game    # http://localhost:8080
+```
+
+No Dokploy:
+
+1. **Application** → provedor Git/GitHub com este repositório e o branch
+   `master`; **Build Type: Dockerfile** (caminho `Dockerfile`, contexto `.`).
+2. **Domains** → o domínio, **Container Port 80**, HTTPS ligado com Let's
+   Encrypt. O HTTPS não é opcional para o Quest: o óculos só abre a sessão
+   WebXR numa origem segura.
+3. **Deploy** (e, se quiser, Auto Deploy pelo webhook do repositório).
 
 Para rodar os testes de layout/colisão (não precisa de navegador):
 
@@ -59,6 +83,54 @@ do servidor rodando):
 ```
 
 Renderiza por software, então cada captura leva alguns minutos.
+
+### Medindo o mundo em vez de procurar erro no olho
+
+Duas ferramentas (com o servidor rodando e o Playwright disponível):
+
+```bash
+npm run test:world            # todos os níveis temáticos + três genéricos
+npm run test:world judicial   # só um nível
+npm run audit judicial ring   # fotos em shots/audit/ cujo nome contenha isso
+```
+
+`tools/world-check.cjs` percorre todo o piso andável de cada nível pela
+própria colisão do jogo e, de cada ponto, lança raios na cena. Acusa:
+
+| Falha | O que é |
+| --- | --- |
+| `LEAK` | uma linha de visão que escapa do nível e termina no casco do silo (ou em nada): fresta em parede, porta que abre para o vazio |
+| `NO-FLOOR` | lugar onde a colisão deixa pisar e não há piso desenhado |
+| `NO-ROOF` | sala ou corredor aberto para a neblina |
+| `WALKS-THROUGH` | algo sólido desenhado num passo que a colisão permite: parede sobre uma porta, objeto sem volume de colisão |
+| `BACKWARDS` | placa com as letras viradas para a parede (lê-se espelhada) |
+| `LOOSE` | placa sem nada atrás: dá para contornar e ler pelo verso |
+| `BURIED` | placa com algo colado na frente (sobre uma porta, dentro de um pilar) |
+
+`tools/audit.cjs` carrega o jogo uma vez e voa a câmera por ~450 poses
+(chegada, galeria, cada corredor e cada sala de cada nível temático), em vez
+de recarregar a página a cada foto.
+
+A primeira rodada achou o que meses de capturas pontuais não tinham achado:
+em 13 dos 16 níveis temáticos os corredores eram desenhados a 60° ou mais de
+onde a porta e a colisão estavam (a porta abria para o vazio e o jogador
+andava no ar), nenhuma sala tinha a parede da frente, e a galeria tinha uma
+fresta em forma de crescente no pé e no topo de cada painel de parede. Regras
+que saíram disso:
+
+- **O rumo de uma ala é `wingRotation + WING_OFFSETS[i]`, e só.** Já é
+  absoluto; somar o rumo do patamar foi o erro. E ele passa de 2π: o que
+  recorta ou evita uma ala num anel de 0 a 2π tem de considerar o rumo
+  ±2π (uma porta em cada nível ficava emparedada por isso).
+- **A parede da galeria não é um cilindro.** São painéis planos, tangentes ao
+  raio nominal no centro de cada um. Tudo que vai na parede é posto *no
+  painel* (`onPanel`/`claimPanel` em `js/world/signs.js`), nunca por raio e
+  ângulo; e laje e teto entram um pouco na parede em vez de parar no raio.
+- **Nada atravessa o patamar.** Os patamares ficam sempre em múltiplos de
+  60°; o que corre o poço inteiro (os canos de serviço, `RISERS` em
+  `config.js`) fica nas bissetrizes, e `npm test` confere isso nos 148.
+- **Letreiro tem uma face só.** Plano de duas faces lê-se espelhado por trás.
+  O que pode ser visto pelo verso ganha corpo (`mountPlate`).
 
 ## Dimensões x referências
 
@@ -105,7 +177,18 @@ está preso a `<= 1,323` rad — e há teste travando isso.
 ## Sobre performance
 
 O custo por frame escala com o que está **visível**, não com o tamanho do
-mundo — o three.js faz frustum culling. Medido com `?stats=1&bloom=0`:
+mundo — o three.js faz frustum culling. Medido em 22/11/2026 (148 níveis,
+galerias de pé-direito duplo, fachadas e salas novas), renderização por
+software:
+
+| Vista | Draw calls | Triângulos |
+| --- | --- | --- |
+| Poço (`?view=shaft`) | ~395 | ~203 mil |
+| Da borda da galeria, olhando a fachada do outro lado | ~315 | ~344 mil (Quest: ~322 mil) |
+
+As fachadas são instanciadas em blocos de seis níveis e em dois alcances: o
+volume, as portas e as janelas até `?detail` metros, e as ferragens até 40%
+disso. A medição antiga, de quando o silo tinha doze andares:
 
 | | 3 corredores/andar | 8 corredores/andar |
 | --- | --- | --- |
@@ -135,39 +218,120 @@ como engasgo ao chegar num andar novo.
 | `E`         | Examinar registros/lore |
 | `Esc`       | Pausar (libera o mouse) |
 
+No óculos (ver "No óculos (Meta Quest)" abaixo):
+
+| Controle                         | Ação                          |
+| -------------------------------- | ----------------------------- |
+| Analógico esquerdo               | Andar, na direção do olhar    |
+| Analógico direito                | Girar em passos de 30°        |
+| Gatilho (mão direita)            | Examinar / abrir / fechar     |
+| Empunhadura ou clique no analógico esquerdo | Apressar o passo   |
+| Andar de verdade                 | Anda — o corpo segue a cabeça |
+
+## No óculos (Meta Quest)
+
+O jogo roda no navegador do Quest por WebXR; é o mesmo código, com um modo a
+mais. Quando o navegador consegue abrir uma sessão imersiva, o menu ganha o
+botão **Entrar com o óculos**.
+
+**Abrindo no óculos.** WebXR só funciona em origem segura, e
+`http://192.168.x.x` não é uma. Três caminhos, do mais simples ao mais
+trabalhoso:
+
+```bash
+npm run dev:https
+```
+
+sobe o mesmo servidor em HTTPS com um certificado autoassinado (gerado em
+`certs/`, fora do git) e imprime o endereço da máquina na rede. Abra esse
+endereço no navegador do Quest e aceite o aviso de certificado. As outras
+duas opções são publicar a pasta em qualquer hospedagem estática com HTTPS,
+ou, com o modo desenvolvedor ligado e o cabo USB,
+`adb reverse tcp:8080 tcp:8080` e abrir `http://localhost:8080` no óculos.
+
+**O que muda dentro da sessão.**
+
+- A câmera pende de um *rig*. O óculos é dono da pose da câmera; o que o
+  jogo move é o rig, posto nos pés do jogador. Não há altura dos olhos,
+  inclinação nem balanço de cabeça a aplicar — o pescoço do jogador faz os
+  três.
+- Dois movimentos, resolvidos separadamente (`js/xr/locomotion.js`): o
+  analógico leva o espaço inteiro; passos de verdade movem só a cabeça, e o
+  corpo a segue até onde a colisão deixa. A cabeça pode ir 55 cm além do
+  corpo — é a folga que permite debruçar na mureta para olhar o vão sem que o
+  mundo escorregue para trás.
+- Conforto: giro em passos, velocidades menores que as do teclado (2,8 e
+  4,4 m/s contra 3,8 e 7) e uma vinheta que estreita o campo de visão
+  enquanto o analógico move o jogador. `?vignette=0` desliga a vinheta.
+- A interface em HTML não aparece dentro do óculos. O equivalente
+  (`js/xr/hud.js`) são três painéis na cena: um sobre a mão esquerda com
+  nível e objetivo, o texto do registro segurado diante da placa, e o aviso
+  de interação na ponta do raio.
+- O bloom não roda: pós-processamento desenha num alvo fora da tela, que a
+  sessão não exibe. A cena vai direto para o dispositivo.
+
+**Orçamento.** No navegador do Quest o jogo assume o perfil `quest`
+(`js/quality.js`): sem sombras, 4 luzes pontuais no pool em vez de 10, 72 Hz,
+e o detalhe das fachadas (portas, sacadas, corrimãos) desenhado num raio
+menor de níveis.
+É um ponto de partida conservador, **ainda não medido no aparelho**. O que
+pesa num óculos não é geometria e sim custo por pixel — dois olhos, muita
+resolução, GPU de celular. Para devolver qualidade enquanto mede:
+
+| Parâmetro | Efeito |
+| --- | --- |
+| `?quality=desktop` / `?quality=quest` | força um perfil |
+| `?lights=N` | tamanho do pool de luzes (1–10) |
+| `?shadows=1` / `?shadows=0` | sombras |
+| `?normals=0` | sem normal maps |
+| `?hz=90` | taxa de quadros pedida ao óculos |
+| `?detail=N` | até quantos metros acima/abaixo as fachadas mostram detalhe (desktop 62, Quest 36) |
+
+**Testando sem o óculos.** `npm run test:xr` (com o servidor rodando) dirige
+uma sessão inteira contra um dispositivo WebXR falso (`tools/fake-xr.js`):
+entrar, andar com o analógico, girar, apontar para um registro, ler com o
+gatilho e sair. Ele prova que o código do modo funciona; taxa de quadros e
+conforto só o aparelho responde.
+
 ## O que existe nesta versão
 
-Doze andares numerados do Silo mais um sub-nível, construídos à mão e ligados
-por uma escadaria em espiral contínua — matematicamente uma única hélice, do
-Nível 1 até abaixo do 144. Os números seguem o zoneamento vertical do diagrama
-estrutural de referência (`references/silo-layout.JPG`):
+Os 148 níveis do Silo são andáveis, ligados por uma escadaria em espiral
+contínua — matematicamente uma única hélice, do Nível 1 até o 148. Dezesseis
+deles são construídos à mão: o departamento numa sala principal e duas salas
+laterais próprias do setor (`js/world/rooms.js`). Onde os mapas do poço
+feitos para a série dizem o nível de um departamento (`new-references`
+079–080), o jogo segue o mapa:
 
-| Nível | Andar | Faixa |
-| ----- | ----- | ----- |
-| 1 | **Topo** — cafeteria, tela do exterior e saída controlada | Silo Superior (1-49) |
-| 8 | **Judicial** — governança e o Pacto | Silo Superior |
-| 17 | **O Ninho** — posto do xerife | Silo Superior |
-| 28 | **Residencial** — apartamentos e salões | Silo Superior |
-| 40 | **Creche e Escola** | Silo Superior |
-| 56 | **Enfermaria** — médico, botica e berçário | Os Médios (50-119) |
-| 72 | **O Bazar** — lojas, bar e alfaiataria | Os Médios |
-| 88 | **As Roças** — fazendas e jardins | Os Médios |
-| 102 | **Tratamento de Água** | Os Médios |
-| 110 | **TI** — central de dados e comunicações | Os Médios |
-| 128 | **Mecânica** — oficinas e engenharia pesada | Fundo do Silo (120-144) |
-| 144 | **O Gerador** — núcleo de energia | Fundo do Silo |
-| 145 | **O Vão do Escavador** — a máquina que cavou o poço | Abaixo (145-148) |
-| 146 | **As Minas** — frente de escavação | Abaixo |
-| 147 | **A Caverna** — cavidade e estruturas antigas | Abaixo |
-| 148 | **O Limiar** — os túneis, e o cabo que sai do Silo 18 | Abaixo |
+| Nível | Andar | Salas laterais | Faixa |
+| ----- | ----- | -------------- | ----- |
+| 1 | **Topo** — cafeteria e a tela do exterior | posto do xerife (salão redondo, celas, escritório, cela de espera) · saída controlada (trajes, airlock) | Silo Superior (1-49) |
+| 18 | **Delegacia** — posto de delegados | celas · delegado de plantão | Silo Superior |
+| 28 | **Residencial** — becos, apartamentos e praça | salão comunitário · depósito | Silo Superior |
+| 34 | **TI** — central de dados e o Cofre | servidores · comunicações | Silo Superior |
+| 39 | **Judicial** — governança e o Pacto | arquivo do Pacto · secretaria | Silo Superior |
+| 40 | **Creche e Escola** | sala de aula · berçário | Silo Superior |
+| 66 | **As Roças** — fazendas e jardins | banco de sementes · estufa | Os Médios (50-119) |
+| 68 | **O Bazar** — o mercado | alfaiataria · bar | Os Médios |
+| 73 | **Enfermaria** — medicina | enfermaria B · botica | Os Médios |
+| 102 | **Tratamento de Água** | bombas · laboratório | Os Médios |
+| 128 | **Mecânica** — oficinas e engenharia pesada | oficina · almoxarifado | Fundo do Silo (120-144) |
+| 144 | **O Gerador** — o salão da turbina | sala de controle · vestiário | Fundo do Silo |
+| 145 | **O Vão do Escavador** — a máquina que cavou o poço | paiol · oficina de campo | Abaixo (145-148) |
+| 146 | **As Minas** — frente de escavação | lampisteria · minério | Abaixo |
+| 147 | **A Caverna** — cavidade e estruturas antigas | levantamento · depósito | Abaixo |
+| 148 | **O Limiar** — os túneis, e o cabo que sai do Silo 18 | caixa de cabos · depósito | Abaixo |
+
+Os outros 132 níveis têm a galeria completa: colunas contínuas na borda,
+pé-direito duplo e a fachada de dois pavimentos (`js/world/facade.js`), com
+portas, sacadas e escadinhas, mas sem alas.
 
 O Vão do Escavador não é um nível numerado: é a caverna sob o silo onde a
 máquina que perfurou o poço foi abandonada de frente para a rocha, selada sob
-uma laje grossa. O Nível 110 (TI) tem **o Cofre**, a câmara blindada de onde
+uma laje grossa. O Nível 34 (TI) tem **o Cofre**, a câmara blindada de onde
 vem a voz que fala com o chefe do departamento.
 
-O teste `npm test` trava esse zoneamento: se um nível for movido para a
-faixa errada, o teste quebra.
+O teste `npm test` trava esse zoneamento e os níveis tirados dos mapas da
+produção: se um departamento for movido, o teste quebra.
 
 ### Nada pode flutuar
 
@@ -276,13 +440,19 @@ para o andar parecer habitado mesmo onde não dá para entrar.
   - `themes.js` — o que mobilia a sala principal de cada andar.
   - `index.js` — junta tudo em `buildWorld()`.
 - `js/player.js` — pointer lock, WASD, head-bob; delega toda a física de
-  colisão para `collision.js`.
+  colisão para `collision.js`. Em sessão no óculos, move o rig em vez da
+  câmera.
+- `js/xr/` — o modo óculos: `locomotion.js` (a matemática do movimento, sem
+  three.js, testada em `test/xr.test.mjs`), `session.js` (a sessão WebXR e os
+  controles) e `hud.js` (os painéis na cena e a vinheta de conforto).
+- `js/quality.js` — os orçamentos de render por dispositivo.
 - `js/textures.js` — texturas procedurais (concreto, grade metálica, placas
   de texto) via `<canvas>`, sem nenhum arquivo de imagem externo. O concreto
   gera junto um mapa de altura, do qual se deriva um **normal map** (Sobel) —
   é o que faz a luz "pegar" na superfície em vez de tudo parecer papelão
-  pintado. As superfícies são compartilhadas entre os andares e tingidas pela
-  cor de cada estação, senão a geração custaria segundos de load.
+  pintado. As superfícies são compartilhadas entre os andares e tingidas pelo
+  tom de concreto do nível (`concreteFor` em `config.js`, que escurece com a
+  profundidade), senão a geração custaria segundos de load.
 
   O concreto tem um parâmetro de **desgaste** (`wear`), usado em três níveis
   conforme a profundidade: trincas ramificadas, manchas de umidade,

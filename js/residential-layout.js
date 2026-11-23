@@ -6,6 +6,8 @@
 export const RESIDENTIAL = {
   start:22.6, end:58, half:2.2, roomStart:34, roomWidth:6, outer:10.8,
   court: { x0:26, x1:33, half:6, height:6.5 },
+  // The alley between the court and the square: a canyon, open to this.
+  canyon: 7.2,
   plaza: { x0:52.4, x1:58, half:5.4, height:6.2 },
   // How far the walls flanking a door stand proud of it, leaving the leaf in a
   // niche. Each room's `recess` adds to this depth; the door plane itself is

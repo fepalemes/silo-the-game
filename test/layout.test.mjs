@@ -16,13 +16,19 @@ import {
   WALL_THICKNESS,
   DEEPEST_LEVEL,
   LEVEL_HEIGHT,
+  RISERS,
+  CONCRETE,
+  FACADE,
+  GALLERY_COLUMNS,
+  SIDE_ROOMS,
+  wingSpec,
   TURNS_PER_LEVEL,
   WING_OFFSETS,
   WORLD,
   ZONES,
   zoneForLevel,
 } from "../js/config.js";
-import { classifyTheta, resolveMove, slopeOuterRadius } from "../js/collision.js";
+import { canStand, classifyTheta, resolveMove, slopeOuterRadius } from "../js/collision.js";
 import { wrapToPi } from "../js/mathutils.js";
 
 let failures = 0;
@@ -68,7 +74,7 @@ function heightAt(theta) {
     bazar: "OS MÉDIOS",
     rocas: "OS MÉDIOS",
     agua: "OS MÉDIOS",
-    ti: "OS MÉDIOS",
+    ti: "SILO SUPERIOR",
     mecanica: "FUNDO DO SILO",
     gerador: "FUNDO DO SILO",
     escavador: "ABAIXO",
@@ -410,6 +416,115 @@ assert(approx(slopeOuterRadius(0.5), WORLD.stairOuterR), "slope radius at t=0.5 
   }
   assert(valid, "curved treads follow their inner and outer radii without rectangular overhangs");
   assert(data.uvs.length === data.positions.length / 3 * 2, "every curved vertex has texture coordinates");
+}
+{
+  // Every authored wing, in its own frame: along = outward, across = sideways.
+  // The room's front wall stands either side of the corridor mouth; the
+  // collision used to let a body stand inside it, where nothing is drawn.
+  const layout = buildLayout();
+  const roomStart = WORLD.landingR + WORLD.corridorLen;
+  let inWall = 0, walkable = 0, wings = 0;
+  for (const st of layout.stations.filter((s) => !s.generated && s.id !== "residencial")) {
+    WING_OFFSETS.forEach((offset, i) => {
+      const a = (st.wingRotation || 0) + offset;
+      const at = (along, across) => ({ x: along * Math.cos(a) - across * Math.sin(a), z: along * Math.sin(a) + across * Math.cos(a), y: st.y, theta: st.theta, level: st.index });
+      wings++;
+      // Beside the corridor mouth, in the thickness of the front wall.
+      for (const across of [-1, 1]) if (canStand(layout, at(roomStart, across * (WORLD.corridorHalfW + 0.6)))) inWall++;
+      // Corridor, threshold and room are all walkable, and connected.
+      let state = at(WORLD.landingR - 0.6, 0);
+      for (let k = 0; k < 160; k++) state = resolveMove(layout, state, Math.cos(a) * 0.1, Math.sin(a) * 0.1);
+      const reached = state.x * Math.cos(a) + state.z * Math.sin(a);
+      if (reached > roomStart + 4 && canStand(layout, at(roomStart + 2, 0))) walkable++;
+    });
+  }
+  assert(inWall === 0, `no wing lets a body stand inside the room's front wall (${inWall} spots)`);
+  assert(walkable === wings, `every wing can be walked from the ring into its room (${walkable}/${wings})`);
+  assert(!canStand(layout, { x: NaN, y: 0, z: 0, theta: 0, level: 0 }), "a corrupt position is never standable");
+}
+{
+  // The shaft's service risers must never come up through a landing deck or
+  // a bay, on any of the 148 levels. Two of them used to pierce every third
+  // deck, and some bays were built round them.
+  const layout = buildLayout();
+  const gap = (a, b) => Math.abs(wrapToPi(a - b));
+  const riserHalf = Math.asin((RISERS.radius + WORLD.playerRadius) / RISERS.r);
+  let decks = 0, bays = 0;
+  for (const st of layout.stations) {
+    for (const r of RISERS.angles) {
+      if (gap(r, st.theta) < WORLD.landingHalfAngle + riserHalf) decks++;
+      for (const bay of st.bays) if (gap(r, bay.bearing) < bay.halfWidth + riserHalf) bays++;
+    }
+  }
+  assert(decks === 0, `no riser stands in a landing deck (${decks})`);
+  assert(bays === 0, `no riser stands in a bay (${bays})`);
+  assert(layout.stations.every((st) => st.bays.every((b) => gap(b.bearing, st.theta) > b.halfWidth + WORLD.landingHalfAngle)), "no bay overlaps its own level's landing deck");
+}
+{
+  // One concrete from top to bottom (as in every reference), never brighter
+  // further down, and grey: no level's walls or floor may carry a hue. The
+  // sector's identity lives in its light, which must still differ.
+  const layout = buildLayout();
+  const rgb = (n) => [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  const lum = (n) => { const [r, g, b] = rgb(n); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+  const sat = (n) => { const c = rgb(n), mx = Math.max(...c), mn = Math.min(...c); return mx ? (mx - mn) / mx : 0; };
+  let darkening = true;
+  for (let i = 1; i < layout.stations.length; i++) darkening &&= lum(layout.stations[i].wall) <= lum(layout.stations[i - 1].wall) + 1e-9;
+  assert(darkening, "the concrete never gets lighter on the way down");
+  // Grey with at most the cool cast of the stills, never a sector's hue.
+  const hue = (n) => { const [r, g, b] = rgb(n), mx = Math.max(r, g, b), mn = Math.min(r, g, b); if (mx === mn) return 0; const h = mx === r ? ((g - b) / (mx - mn)) % 6 : mx === g ? (b - r) / (mx - mn) + 2 : (r - g) / (mx - mn) + 4; return (h * 60 + 360) % 360; };
+  const grey = (n) => sat(n) < 0.03 || (sat(n) < 0.12 && hue(n) >= 180 && hue(n) <= 240);
+  assert(layout.stations.every((st) => grey(st.wall) && grey(st.floor)), "every level's walls and floor are grey");
+  assert(new Set(layout.stations.filter((st) => !st.generated).map((st) => st.light)).size > 8, "sectors still differ by their light");
+  assert(lum(layout.stations[0].wall) > lum(CONCRETE.bottom.wall), "the top of the silo is paler than the bottom");
+}
+
+{
+  // The gallery columns run the whole height of the silo at the same twelve
+  // bearings, so on no level may one stand in a landing deck, a bay or a
+  // riser - a column through a deck is a column you walk into on the stair.
+  const layout = buildLayout();
+  const gap = (a, b) => Math.abs(wrapToPi(a - b));
+  const half = Math.asin(GALLERY_COLUMNS.radius / GALLERY_COLUMNS.r);
+  assert(GALLERY_COLUMNS.angles.length === 12, "twelve gallery columns");
+  let decks = 0, bays = 0, risers = 0;
+  for (const st of layout.stations) for (const c of GALLERY_COLUMNS.angles) {
+    if (gap(c, st.theta) < WORLD.landingHalfAngle + half) decks++;
+    for (const bay of st.bays) if (gap(c, bay.bearing) < bay.halfWidth + half) bays++;
+  }
+  for (const c of GALLERY_COLUMNS.angles) for (const r of RISERS.angles) {
+    const d = Math.hypot(GALLERY_COLUMNS.r * Math.cos(c) - RISERS.r * Math.cos(r), GALLERY_COLUMNS.r * Math.sin(c) - RISERS.r * Math.sin(r));
+    if (d < GALLERY_COLUMNS.radius + RISERS.radius + 0.3) risers++;
+  }
+  assert(decks === 0, `no gallery column stands in a landing deck (${decks})`);
+  assert(bays === 0, `no gallery column stands in a bay (${bays})`);
+  assert(risers === 0, `the gallery columns keep clear of the risers (${risers})`);
+  // A column eats into the gallery, but leaves most of it to walk.
+  assert(GALLERY_COLUMNS.r + GALLERY_COLUMNS.radius < WORLD.ringInnerR + 1.2, "the columns stand on the gallery's edge, not in its middle");
+  // Two storeys: the upper one's floor clears a door and a body, and its top
+  // is the slab above.
+  assert(FACADE.upperFloor > WORLD.roomHeight && FACADE.upperFloor < FACADE.top - 2.2, `the facade's upper storey has room for a door (${FACADE.upperFloor}..${FACADE.top.toFixed(2)})`);
+  assert(Math.abs(FACADE.top - (LEVEL_HEIGHT - SLAB_THICKNESS)) < 1e-9, "the gallery is open to the underside of the slab above");
+}
+{
+  // Every department has its two side rooms, and every room stays inside the
+  // silo's shell, round or rectangular.
+  const KINDS = ["police", "airlock", "cells", "deputy", "archive", "office", "classroom", "nursery", "seedbank", "hydroponics", "tailor", "bar", "ward", "pharmacy", "pumps", "lab", "servers", "radio", "workshop", "parts", "control", "lockers", "minestores", "survey", "splice", "mess", "storage"];
+  const roomStart = WORLD.landingR + WORLD.corridorLen;
+  for (const st of STATIONS) {
+    assert(SIDE_ROOMS[st.id]?.length === WING_OFFSETS.length - 1, `${st.id} has its side rooms`);
+    for (let i = 0; i < WING_OFFSETS.length; i++) {
+      const spec = wingSpec(st, i);
+      if (i > 0) assert(KINDS.includes(spec.kind) && spec.label, `${st.id} wing ${i}: a known room (${spec.kind}) with a name on its door`);
+      const far = spec.shape === "round" ? roomStart + spec.depth : Math.hypot(roomStart + spec.depth, spec.halfW);
+      assert(far < WORLD.shellR - 1, `${st.id} wing ${i} ends inside the shell (r=${far.toFixed(1)})`);
+      if (spec.height) assert(spec.height - WORLD.eyeHeight < LEVEL_HEIGHT, `${st.id} wing ${i}: a tall room still has a roof within a level (${spec.height}m)`);
+    }
+  }
+  // The production's own placing of the departments (new-references 079-080).
+  const at = Object.fromEntries(STATIONS.map((s) => [s.id, s.level]));
+  assert(at.ti === 34 && at.judicial === 39 && at.rocas === 66 && at.bazar === 68 && at.enfermaria === 73, "IT 34, judicial 39, agriculture 66, market 68, medical 73, as on the production's shaft maps");
+  assert(at.ninho === 18 && SIDE_ROOMS.topo[0].kind === "police", "the sheriff is on level 1, a deputy station on 18");
 }
 
 console.log(failures === 0 ? "\nALL TESTS PASSED" : `\n${failures} TEST(S) FAILED`);

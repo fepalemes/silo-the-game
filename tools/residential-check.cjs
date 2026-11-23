@@ -5,7 +5,7 @@ const assert=require('node:assert/strict');
  try {
   const page=await browser.newPage({viewport:{width:1200,height:800}}),errors=[];
   page.on('pageerror',e=>errors.push(e.message));
-  await page.goto('http://localhost:8080/?bloom=0');
+  await page.goto(`${process.env.BASE || 'http://localhost:8080'}/?bloom=0`);
   await page.waitForFunction(()=>!document.querySelector('#start-button').disabled,null,{timeout:90000});
   await page.click('#start-button');await page.waitForFunction(()=>document.pointerLockElement!==null);
   await page.evaluate(async()=>{

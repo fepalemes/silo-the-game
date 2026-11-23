@@ -1,5 +1,5 @@
 import { inResidential } from "./residential-layout.js";
-import { SECONDARY_WING, WING_OFFSETS, WORLD } from "./config.js";
+import { WING_OFFSETS, WORLD, wingSpec } from "./config.js";
 import { clamp, lerp, lerpHexColor, unwrapAngleNear, wrapToPi } from "./mathutils.js";
 
 const TAPER_FRACTION = 0.12;
@@ -76,16 +76,34 @@ function resolveInWing(station, px, pz) {
       if(inResidential(lx,lz))return true;
       continue;
     }
-    const roomHalfW = i === 0 ? station.roomHalfW : SECONDARY_WING.roomHalfW;
-    const roomDepth = i === 0 ? station.roomDepth : SECONDARY_WING.roomDepth;
+    const spec = wingSpec(station, i);
+    // A round hall (the cafeteria, the sheriff's station): the corridor runs
+    // on through the wall's thickness into it, and the floor is a circle
+    // short of whatever stands round its wall.
+    if (spec.shape === "round") {
+      const radius = spec.halfW;
+      // The corridor carries on until it meets the hall's floor, however far
+      // from the wall that stops.
+      const reach = Math.max(0.8, playerR + spec.clearance + 0.3);
+      const inCorridor = lx >= WORLD.landingR - playerR && lx <= roomStart + reach && Math.abs(lz) <= WORLD.corridorHalfW - playerR;
+      const inHall = Math.hypot(lx - (roomStart + radius), lz) <= radius - playerR - spec.clearance;
+      if (inCorridor || inHall) return true;
+      continue;
+    }
+    const roomHalfW = spec.halfW;
+    const roomDepth = spec.depth;
 
+    // The corridor runs a body's radius into the room and the room starts a
+    // body's radius in from its front wall. The other way round (corridor to
+    // the wall line, room from a radius before it) let the player stand inside
+    // the front wall, beside the corridor mouth, where there is no floor.
     const inCorridor =
       lx >= WORLD.landingR - playerR &&
-      lx <= roomStart &&
+      lx <= roomStart + playerR &&
       Math.abs(lz) <= WORLD.corridorHalfW - playerR;
 
     const inRoom =
-      lx >= roomStart - playerR &&
+      lx >= roomStart + playerR &&
       lx <= roomStart + roomDepth - playerR &&
       Math.abs(lz) <= roomHalfW - playerR;
 
@@ -114,11 +132,37 @@ export function resolveMove(layout, prevState, moveX, moveZ) {
   return state;
 }
 
+// Whether a body can stand exactly where `state` says. Used for positions that
+// did not come from walking here - a save written by an older version of the
+// layout, above all - where "inside what is now a wall" means stuck for good.
+export function canStand(layout, state) {
+  if (!["x", "y", "z", "theta"].every((key) => Number.isFinite(state?.[key]))) return false;
+  return probe(layout, state)(0, 0) !== null;
+}
+
 function resolveStep(layout, prevState, moveX, moveZ) {
+  const level = prevState.level ?? null;
+  const tryDelta = probe(layout, prevState);
+  return (
+    tryDelta(moveX, moveZ) ||
+    tryDelta(moveX, 0) ||
+    tryDelta(0, moveZ) || {
+      x: prevState.x,
+      y: prevState.y,
+      z: prevState.z,
+      theta: prevState.theta,
+      level,
+    }
+  );
+}
+
+// The position test behind every move: given where the body is, returns a
+// function that says where a step of (dx, dz) lands - or null if it cannot.
+function probe(layout, prevState) {
   const pr = WORLD.playerRadius;
   const level = prevState.level ?? null;
 
-  const tryDelta = (dx, dz) => {
+  return (dx, dz) => {
     const px = prevState.x + dx;
     const pz = prevState.z + dz;
     const r = Math.hypot(px, pz);
@@ -190,18 +234,6 @@ function resolveStep(layout, prevState, moveX, moveZ) {
     }
     return null;
   };
-
-  return (
-    tryDelta(moveX, moveZ) ||
-    tryDelta(moveX, 0) ||
-    tryDelta(0, moveZ) || {
-      x: prevState.x,
-      y: prevState.y,
-      z: prevState.z,
-      theta: prevState.theta,
-      level,
-    }
-  );
 }
 
 // For the HUD: which level the player is on (or between), and a fog/ambient

@@ -8,7 +8,9 @@ try {
  page.on('pageerror',e=>errors.push(e.message));
  await page.goto(process.env.BASE || 'http://localhost:8080/');
  await page.waitForFunction(()=>!document.getElementById('start-button').disabled,null,{timeout:90000});
- await page.screenshot({path:'shots/menu.png'});
+ // Generous screenshot timeouts: this runs on a software rasteriser with bloom
+ // on, where one frame takes seconds and the first ones also compile shaders.
+ await page.screenshot({path:'shots/menu.png',timeout:120000});
  await page.click('#start-button');
  await page.waitForFunction(()=>document.pointerLockElement!==null);
  await page.evaluate(async()=>{
@@ -22,7 +24,7 @@ try {
  await page.waitForFunction(()=>!document.getElementById('lore-panel').hidden);
  const state=()=>page.evaluate(async()=>({...((await import('/js/main.js')).player.getState())}));
  const before=await state(); await page.keyboard.down('w');await page.waitForTimeout(1000);await page.keyboard.up('w');assert.deepEqual(await state(),before);
- await page.screenshot({path:'shots/registro.png'});
+ await page.screenshot({path:'shots/registro.png',timeout:120000});
  await page.keyboard.press('e');await page.waitForFunction(()=>document.getElementById('lore-panel').hidden);
  await page.evaluate(()=>document.exitPointerLock());await page.waitForFunction(()=>!document.getElementById('pause-screen').hidden);
  await page.setViewportSize({width:1100,height:700});await page.waitForTimeout(1000);
@@ -40,15 +42,15 @@ try {
  await page.click('#start-button');
  await page.waitForFunction(()=>document.pointerLockElement!==null);
  assert((await page.locator('#mission-summary').textContent()).includes('Observe o mundo exterior'));
- await page.screenshot({path:'shots/mission-progress.png'});
+ await page.screenshot({path:'shots/mission-progress.png',timeout:120000});
  await page.evaluate(async()=>{
    const {player}=await import('/js/main.js'),{WING_OFFSETS}=await import('/js/config.js');const a=WING_OFFSETS[0];
-   Object.assign(player.getState(),{x:43*Math.cos(a),z:43*Math.sin(a),y:0,theta:0,level:0});
+   Object.assign(player.getState(),{x:55*Math.cos(a),z:55*Math.sin(a),y:0,theta:0,level:0});
  });
  await page.waitForFunction(()=>document.getElementById('mission-summary').textContent.includes('Missão concluída'));
  await page.keyboard.press('p');
  assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('silo18.progress.v1')).progress.completed.length),3);
- await page.screenshot({path:'shots/mission-complete.png'});
+ await page.screenshot({path:'shots/mission-complete.png',timeout:120000});
  assert.deepEqual(errors,[]);
  console.log('INTERACTION + BLOOM PASSED: visible plaque, E open/close, reading blocks movement, pause, resize, manual save, reload restores position/orientation/objectives, mission completion, no runtime errors');
 } finally {await browser.close()}
