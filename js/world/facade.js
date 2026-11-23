@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { FACADE, LEVEL_HEIGHT, WORLD } from "../config.js";
+import { FACADE, GALLERY_COLUMNS, LEVEL_HEIGHT, WORLD } from "../config.js";
+import { lightPoolTexture } from "./atmosphere.js";
 import { mulberry32 } from "../textures.js";
 import { getWallSurface, resolveSurface, tint, wearTierFor } from "./materials.js";
 import { WINDOW_PALETTE, painted, roundedRect } from "./fixtures.js";
@@ -155,10 +156,13 @@ function parts() {
   const stairRail = merged(stairRailParts);
 
   const pipe = new THREE.CylinderGeometry(1, 1, 1, 8, 1, true);
+  // A pool of lamplight on the floor, lying flat, long along x.
+  const pool = new THREE.PlaneGeometry(1, 1);
+  pool.rotateX(-Math.PI / 2);
 
   const metal = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.45, metalness: 0.45, side: THREE.DoubleSide });
   kit = {
-    geometry: { window, door, lamp, vent, rail, stair, stairRail, pipe, concrete: new THREE.BoxGeometry(1, 1, 1) },
+    geometry: { window, door, lamp, vent, rail, stair, stairRail, pipe, pool, concrete: new THREE.BoxGeometry(1, 1, 1) },
     material: {
       window: new THREE.MeshBasicMaterial({ vertexColors: true }),
       door: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.62, metalness: 0.18 }),
@@ -167,6 +171,9 @@ function parts() {
       rail: metal,
       stairRail: metal,
       pipe: new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5, metalness: 0.3 }),
+      // Added on top of the floor's own lighting: the pool light the far
+      // galleries cannot get from the few real lights near the player.
+      pool: new THREE.MeshBasicMaterial({ map: lightPoolTexture(), color: 0xffffff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }),
     },
     concrete: new Map(),
   };
@@ -231,6 +238,8 @@ function dressPanel(b, station, panel, rand, profile) {
     const paint = new THREE.Color(DOOR_PAINT[Math.floor(rand() * DOOR_PAINT.length)]).multiplyScalar(depthShade * (0.85 + rand() * 0.25));
     b.door.push(frame(panel, y0, x, y, z), paint);
     b.lamp.push(frame(panel, y0, x, y + 2.5, z));
+    // The lamp's light on the gallery floor in front of a ground-floor door.
+    if (y === 0) b.pool.push(frame(panel, y0 + 0.014, x, 0, z + 0.75, 2.2, 1, 1.6), new THREE.Color(0xffc48a).multiplyScalar(0.22));
   };
   const railRun = (x0, x1, y, z) => {
     const n = Math.max(1, Math.round(x1 - x0));
@@ -341,7 +350,7 @@ function dressPanel(b, station, panel, rand, profile) {
 // --- The silo ----------------------------------------------------------------
 
 function newBatches() {
-  return { concrete: new Batch(), stair: new Batch(), window: new Batch(), door: new Batch(), lamp: new Batch(), vent: new Batch(), rail: new Batch(), stairRail: new Batch(), pipe: new Batch() };
+  return { concrete: new Batch(), stair: new Batch(), window: new Batch(), door: new Batch(), lamp: new Batch(), vent: new Batch(), rail: new Batch(), stairRail: new Batch(), pipe: new Batch(), pool: new Batch() };
 }
 
 function instanced(group, geometry, material, batch, name) {
@@ -370,6 +379,16 @@ export function buildFacades(scene, layout, { range = RANGE } = {}) {
       station.panels.forEach((panel, i) => {
         dressPanel(b, station, panel, mulberry32((station.level * 977 + i * 131) >>> 0), profile);
       });
+      // Under the strip lights along the slab edge (station.js places them
+      // at the same bearings), a long pool of light on the gallery floor.
+      for (let a = 0.12; a < TAU - 1e-6; a += 0.26) {
+        if (GALLERY_COLUMNS.angles.some((c) => Math.abs(Math.atan2(Math.sin(a - c), Math.cos(a - c))) < 0.09)) continue;
+        const r = WORLD.ringInnerR + 1.9;
+        _e.set(0, -a - Math.PI / 2, 0);
+        _q.setFromEuler(_e);
+        _m.compose(_p.set(r * Math.cos(a), station.y + 0.012, r * Math.sin(a)), _q, _s.set(3.6, 1, 2.6));
+        b.pool.push(_m, new THREE.Color(0xffd9ae).multiplyScalar(profile.lit * 0.3));
+      }
     }
     const group = new THREE.Group(), hardware = new THREE.Group();
     group.name = "facade-block";
@@ -384,6 +403,7 @@ export function buildFacades(scene, layout, { range = RANGE } = {}) {
     instanced(hardware, k.geometry.rail, k.material.rail, b.rail, "railings");
     instanced(hardware, k.geometry.stairRail, k.material.stairRail, b.stairRail, "stair-railings");
     instanced(hardware, k.geometry.pipe, k.material.pipe, b.pipe, "pipes");
+    instanced(group, k.geometry.pool, k.material.pool, b.pool, "light-pools");
     scene.add(group, hardware);
     const top = block[0].y + TOP, bottom = block[block.length - 1].y;
     const y = (top + bottom) / 2, half = (top - bottom) / 2;

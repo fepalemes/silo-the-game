@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { WORLD, RISERS, DOME, GALLERY_COLUMNS } from "../config.js";
+import { WORLD, RISERS, DOME, GALLERY_COLUMNS, LEVEL_HEIGHT } from "../config.js";
 
 import { getStructureSurface, getWallSurface, resolveSurface, STRUCTURE_COLORS } from "./materials.js";
 import { addInstancedBatch, buildBandGeometry } from "./primitives.js";
@@ -37,11 +37,9 @@ export function buildServiceRisers(scene, layout) {
   const h = top - bottom;
   const midY = (top + bottom) / 2;
 
-  for (const angle of angles) {
-    const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.62, h, 12), pipeMat);
-    pipe.position.set(riserR * Math.cos(angle), midY, riserR * Math.sin(angle));
-    scene.add(pipe);
-  }
+  // The pipes themselves are sliced with the rest of the silo-height
+  // structure (buildVerticalStructure, below).
+  void h; void midY;
 
   // The fixtures on them - a caged opal lamp at every floor (continuous blue
   // neon strips made the silo look like a spaceship) and flange collars at
@@ -108,90 +106,89 @@ export function buildCeilingBeams(group, { y, innerR, outerR, material }) {
   }
 }
 
-// Radial beams crossing the void between the hub and the ring at decorative
-// levels, echoing the bridge lattice seen looking down the shaft.
-export function buildOuterShell(scene, layout) {
-  const top = layout.stations[0].y + 14;
-  const bottom = layout.stations[layout.stations.length - 1].y - 14;
-  const height = top - bottom;
-  const midY = (top + bottom) / 2;
+// --- Everything that runs the height of the silo ---------------------------
+// The outer shell and its ribs, the stair's core and its conduits, the twelve
+// gallery columns and the six service risers. Each used to be one mesh 1.2km
+// tall, one triangle from top to bottom: far beyond the camera's 160m reach
+// at both ends, and clipped every frame. Triangles that size lose depth
+// precision, and their edges showed through stairs and slabs as dotted lines
+// of light - the "gaps" seen everywhere in a headset. They also could never
+// be culled. Now they are built in slices of six levels, subdivided at every
+// level, and each slice is a chunk that hides with the floors around it.
+//
+// Texture coordinates run in metres of height, so the slices join without a
+// seam in the concrete.
+const SLICE_LEVELS = 6;
+function cylinderSlice(radius, y0, y1, radial, tile, { open = false } = {}) {
+  const h = y1 - y0;
+  const g = new THREE.CylinderGeometry(radius, radius, h, radial, Math.max(1, Math.ceil(h / LEVEL_HEIGHT)), open);
+  g.translate(0, (y0 + y1) / 2, 0);
+  const pos = g.attributes.position, uv = g.attributes.uv;
+  for (let i = 0; i < uv.count; i++) uv.setY(i, pos.getY(i) / tile);
+  return g;
+}
+function boxSlice(w, d, y0, y1, tile) {
+  const h = y1 - y0;
+  const g = new THREE.BoxGeometry(w, h, d, 1, Math.max(1, Math.ceil(h / LEVEL_HEIGHT)), 1);
+  g.translate(0, (y0 + y1) / 2, 0);
+  const pos = g.attributes.position, uv = g.attributes.uv;
+  for (let i = 0; i < uv.count; i++) uv.setY(i, pos.getY(i) / tile);
+  return g;
+}
+const at = (g, x, z) => { g.translate(x, 0, z); return g; };
+
+export function buildVerticalStructure(layout) {
+  const stations = layout.stations;
+  const first = stations[0], last = stations[stations.length - 1];
+  const span = {
+    shell: [first.y + 14, last.y - 14],
+    core: [first.y + WORLD.roomHeight + 0.01, last.y - 3],
+    columns: [first.y + WORLD.roomHeight, last.y - 0.6],
+    risers: [first.y + WORLD.roomHeight + DOME.drum, last.y - 1],
+  };
   const R = WORLD.shellR;
-
-  const vRepeat = Math.max(8, Math.round(height / 9));
-  const shellSurface = resolveSurface(getWallSurface(1), [46, vRepeat]);
-
-  const shell = new THREE.Mesh(
-    new THREE.CylinderGeometry(R, R, height, 72, 1, true),
-    new THREE.MeshStandardMaterial({
-      map: shellSurface.map,
-      normalMap: shellSurface.normalMap,
-      color: 0x7e868c,
-      roughness: 0.96,
-      metalness: 0.02,
-      side: THREE.BackSide, // we only ever see it from the inside
-    })
-  );
-  shell.position.set(0, midY, 0);
-  scene.add(shell);
-
-  // Vertical ribs / pilasters running the full height, batched into one draw
-  // call. These are what give the shell a sense of curvature and scale.
-  const ribCount = 36;
-  const ribGeo = new THREE.BoxGeometry(0.9, height, 1.8);
-  const ribMat = new THREE.MeshStandardMaterial({ color: 0x5b5f63, roughness: 0.95, metalness: 0.03, side: THREE.DoubleSide });
-  const ribs = new THREE.InstancedMesh(ribGeo, ribMat, ribCount);
-  const dummy = new THREE.Object3D();
-  for (let i = 0; i < ribCount; i++) {
-    const theta = (i / ribCount) * Math.PI * 2;
-    const r = R - 0.45;
-    dummy.position.set(r * Math.cos(theta), midY, r * Math.sin(theta));
-    dummy.rotation.set(0, -theta, 0);
-    dummy.updateMatrix();
-    ribs.setMatrixAt(i, dummy.matrix);
+  const shellSurface = resolveSurface(getWallSurface(1), [46, 1]);
+  const mats = {
+    shell: new THREE.MeshStandardMaterial({ map: shellSurface.map, normalMap: shellSurface.normalMap, color: 0x7e868c, roughness: 0.96, metalness: 0.02, side: THREE.BackSide }),
+    ribs: new THREE.MeshStandardMaterial({ color: 0x5b5f63, roughness: 0.95, metalness: 0.03, side: THREE.DoubleSide }),
+    core: (() => { const s = resolveSurface(getStructureSurface(), [5, 1]); return new THREE.MeshStandardMaterial({ map: s.map, normalMap: s.normalMap, color: 0x8d949c, roughness: 0.8, metalness: 0.05 }); })(),
+    conduits: new THREE.MeshStandardMaterial({ color: 0x4a5056, roughness: 0.5, metalness: 0.3 }),
+    columns: (() => { const s = resolveSurface(getStructureSurface(), [3, 1]); return new THREE.MeshStandardMaterial({ map: s.map, normalMap: s.normalMap, color: STRUCTURE_COLORS.pillar, roughness: 0.86, metalness: 0.04 }); })(),
+    risers: new THREE.MeshStandardMaterial({ color: STRUCTURE_COLORS.riser, roughness: 0.92, metalness: 0.08, side: THREE.DoubleSide }),
+  };
+  const chunks = [];
+  for (let k = 0; k < stations.length; k += SLICE_LEVELS) {
+    // Slice edges sit just under a level's floor slab, where nothing shows.
+    const top = k === 0 ? Infinity : stations[k].y - 0.6;
+    const bottom = k + SLICE_LEVELS < stations.length ? stations[k + SLICE_LEVELS].y - 0.6 : -Infinity;
+    const clip = ([a, b]) => [Math.min(a, top), Math.max(b, bottom)];
+    const group = new THREE.Group();
+    // world-check.cjs tells the silo's own shell from the level's insides by this name.
+    group.name = "structure";
+    const add = (geometries, material, name) => {
+      const mesh = new THREE.Mesh(geometries.length > 1 ? mergeGeometries(geometries) : geometries[0], material);
+      mesh.name = name;
+      group.add(mesh);
+    };
+    const [s0, s1] = clip(span.shell);
+    add([cylinderSlice(R, s1, s0, 72, 9, { open: true })], mats.shell, "shell");
+    add(Array.from({ length: 36 }, (_, i) => {
+      const a = (i / 36) * Math.PI * 2;
+      const g = boxSlice(0.9, 1.8, s1, s0, 9);
+      g.rotateY(-a);
+      return at(g, (R - 0.45) * Math.cos(a), (R - 0.45) * Math.sin(a));
+    }), mats.ribs, "shell-ribs");
+    const [c0, c1] = clip(span.core);
+    add([cylinderSlice(DOME.column, c1, c0, 32, 4)], mats.core, "core");
+    add([0.2, 0.32, 0.44, 3.3].map((a) => at(cylinderSlice(0.06, c1, c0, 8, 4), (DOME.column + 0.08) * Math.cos(a), (DOME.column + 0.08) * Math.sin(a))), mats.conduits, "core-conduits");
+    const [g0, g1] = clip(span.columns);
+    add(GALLERY_COLUMNS.angles.map((a) => at(cylinderSlice(GALLERY_COLUMNS.radius, g1, g0, 28, 3.5, { open: true }), GALLERY_COLUMNS.r * Math.cos(a), GALLERY_COLUMNS.r * Math.sin(a))), mats.columns, "gallery-columns");
+    const [r0, r1] = clip(span.risers);
+    add(RISERS.angles.map((a) => at(cylinderSlice(0.62, r1, r0, 12, 4), RISERS.r * Math.cos(a), RISERS.r * Math.sin(a))), mats.risers, "riser-pipes");
+    const y0 = Math.min(s0, r0), y1 = Math.max(s1, g1);
+    chunks.push({ group, y: (y0 + y1) / 2, half: (y0 - y1) / 2, range: 160 });
   }
-  ribs.instanceMatrix.needsUpdate = true;
-  scene.add(ribs);
-}
-
-
-// The gallery columns (config.js GALLERY_COLUMNS), each one piece from the
-// bottom of the silo to the top level's ceiling, where the dome's drum stands
-// on them. Twelve meshes for the whole silo: a per-level column would be 1,776
-// objects, and a stack of short ones never reads as one column anyway.
-export function buildGalleryColumns(scene, layout) {
-  const top = layout.stations[0].y + WORLD.roomHeight;
-  const bottom = layout.stations[layout.stations.length - 1].y - 0.6;
-  const surface = resolveSurface(getStructureSurface(), [3, (top - bottom) / 3.5]);
-  const mat = new THREE.MeshStandardMaterial({ map: surface.map, normalMap: surface.normalMap, color: STRUCTURE_COLORS.pillar, roughness: 0.86, metalness: 0.04 });
-  const geometry = new THREE.CylinderGeometry(GALLERY_COLUMNS.radius, GALLERY_COLUMNS.radius, top - bottom, 28, 1, true);
-  for (const a of GALLERY_COLUMNS.angles) {
-    const column = new THREE.Mesh(geometry, mat);
-    column.position.set(GALLERY_COLUMNS.r * Math.cos(a), (top + bottom) / 2, GALLERY_COLUMNS.r * Math.sin(a));
-    column.name = "gallery-column";
-    scene.add(column);
-  }
-}
-
-export function buildCentralPole(scene, layout) {
-  // The stair's core, from the bottom of the silo to the top level's ceiling;
-  // above that it carries on into the dome (dome.js) to the great lamp. It was
-  // a 0.45m pole standing in an empty 1.7m void; in every reference the stair
-  // winds round a solid column, with conduits running up its face.
-  const top = layout.stations[0].y + WORLD.roomHeight + 0.01;
-  const bottom = layout.stations[layout.stations.length - 1].y - 3;
-  // Texture repeated every few metres up the shaft, not stretched over it.
-  const surface = resolveSurface(getStructureSurface(), [5, (top - bottom) / 4]);
-  const mat = new THREE.MeshStandardMaterial({ map: surface.map, normalMap: surface.normalMap, color: 0x8d949c, roughness: 0.8, metalness: 0.05 });
-  const column = new THREE.Mesh(new THREE.CylinderGeometry(DOME.column, DOME.column, top - bottom, 32), mat);
-  column.position.set(0, (top + bottom) / 2, 0);
-  scene.add(column);
-  const pipes = [];
-  for (const a of [0.2, 0.32, 0.44, 3.3]) {
-    const pipe = new THREE.CylinderGeometry(0.06, 0.06, top - bottom, 8);
-    pipe.translate((DOME.column + 0.08) * Math.cos(a), (top + bottom) / 2, (DOME.column + 0.08) * Math.sin(a));
-    pipes.push(pipe);
-  }
-  scene.add(new THREE.Mesh(mergeGeometries(pipes), new THREE.MeshStandardMaterial({ color: 0x4a5056, roughness: 0.5, metalness: 0.3 })));
+  return chunks;
 }
 
 // ---------------------------------------------------------------------------

@@ -22,7 +22,7 @@ function makeHandle() {
   return handle;
 }
 
-export function createXRSession({ renderer, camera, rig, frameRate = null, onStart, onEnd, onSelect, onVisibility }) {
+export function createXRSession({ renderer, camera, rig, frameRate = null, onStart, onEnd, onSelect, onVisibility, onTrackingReset }) {
   renderer.xr.enabled = true;
   // Floor-level origin: the rig is placed at the player's feet and the headset
   // reports its real height above it, so there is no eye height to invent.
@@ -71,6 +71,21 @@ export function createXRSession({ renderer, camera, rig, frameRate = null, onSta
     return { x: gamepad.axes[offset] || 0, y: gamepad.axes[offset + 1] || 0 };
   }
 
+  // The face buttons, edge-triggered: Y or B (xr-standard button 5) opens and
+  // closes the menu. The Touch controllers' own menu button is the system's
+  // and never reaches the page. Polled every frame by the game, even while
+  // the stick is frozen behind an open menu.
+  const held = new Map();
+  function pollButtons() {
+    let menu = false;
+    for (const hand of connected()) {
+      const pressed = Boolean(hand.source.gamepad?.buttons?.[5]?.pressed);
+      if (pressed && !held.get(hand)) menu = true;
+      held.set(hand, pressed);
+    }
+    return { menu };
+  }
+
   // Left stick walks and right stick turns. With a single controller, that
   // one walks: being able to move matters more than being able to turn, which
   // the player can still do with their own feet.
@@ -85,8 +100,8 @@ export function createXRSession({ renderer, camera, rig, frameRate = null, onSta
       moveX: move.x,
       moveY: move.y,
       turn: turner ? snapTurn(stick(turner.source.gamepad).x) : 0,
-      // Grip squeezed, or the stick clicked in.
-      brisk: Boolean(buttons[1]?.pressed || buttons[3]?.pressed),
+      // Grip squeezed, or the stick clicked in - on either hand.
+      brisk: Boolean(buttons[1]?.pressed || buttons[3]?.pressed || turner?.source.gamepad?.buttons?.[1]?.pressed),
     };
   }
 
@@ -108,7 +123,14 @@ export function createXRSession({ renderer, camera, rig, frameRate = null, onSta
     // A steady lower rate reads far better than a higher one that stutters.
     const rates = Array.from(session.supportedFrameRates || []);
     if (frameRate && rates.includes(frameRate)) session.updateTargetFrameRate(frameRate).catch(() => {});
-    session.addEventListener("visibilitychange", () => onVisibility?.(session.visibilityState === "visible"));
+    session.addEventListener("visibilitychange", () => {
+      const visible = session.visibilityState === "visible";
+      onVisibility?.(visible);
+      // Back from standby or from the system menu: the floor may have moved.
+      if (visible) onTrackingReset?.();
+    });
+    // The system recentred, or lost and found its tracking.
+    renderer.xr.getReferenceSpace()?.addEventListener?.("reset", () => onTrackingReset?.());
     onStart?.();
   });
 
@@ -139,6 +161,7 @@ export function createXRSession({ renderer, camera, rig, frameRate = null, onSta
     isPresenting: () => renderer.xr.isPresenting,
     readInput,
     readHead,
+    pollButtons,
     pointer,
     beam,
     // The hand the wrist panel rides on: the one that is not pointing, when

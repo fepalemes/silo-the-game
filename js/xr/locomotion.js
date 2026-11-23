@@ -5,10 +5,14 @@
 import { resolveMove } from "../collision.js";
 
 export const XR_COMFORT = {
-  // Desktop walks at 3.8 m/s and sprints at 7. Both are far too fast with a
-  // headset on: the eyes report motion the inner ear does not feel.
-  walk: 2.8,
-  brisk: 4.4,
+  // Desktop walks at 3.8 m/s and sprints at 7. Both are too fast with a
+  // headset on: the eyes report motion the inner ear does not feel. Tested
+  // on the Quest 3 (22/11/2026): walking was fine and running too slow for
+  // 148 levels of stair, so running went from 4.4 to 5.6, and the menu's
+  // "rápida" setting multiplies both by `fast` for whoever wants more.
+  walk: 3.0,
+  brisk: 5.6,
+  fast: 1.3,
   deadzone: 0.18,
   // Turning in steps instead of smoothly is the single most effective comfort
   // setting there is - a smooth yaw is what makes most people sick.
@@ -24,6 +28,46 @@ export const XR_COMFORT = {
   recentreJump: 0.75,
   stride: 0.75,
 };
+
+// Where the eyes are: the headset reports its height above the floor of the
+// play space ("local-floor"), and three things can make that wrong. Taking
+// the headset off and putting it back on (seen on the Quest 3: the view came
+// back at ankle height), the system recentring, and a player who sits. So the
+// rig's height carries an offset, kept here:
+//
+//   - the standing eye height is learnt slowly from steady readings;
+//   - after a tracking reset or a return from standby, once the pose settles,
+//     eyes more than half a metre off that height are put back on it;
+//   - eyes below `low`, or far above standing height, for `hold` seconds are
+//     put back too (nobody keeps their eyes 60cm off the floor that long);
+//   - "seated" pins the eyes at standing height whatever the headset says.
+export function createHeightGuard({ standing = 1.65, low = 0.6, hold = 2.5, settle = 0.5, tolerance = 0.5 } = {}) {
+  let typical = null, offset = 0, seated = false, offFor = 0, recheck = -1;
+  const target = () => (seated ? standing : typical ?? standing);
+  return {
+    // Tracking may have lost the floor: check again once the pose settles.
+    suspect() { recheck = settle; },
+    // Put the eyes at standing height now (the menu's "recalibrar").
+    recalibrate(headY) { offset = target() - headY; offFor = 0; },
+    setSeated(on, headY) { seated = Boolean(on); offset = target() - headY; offFor = 0; },
+    isSeated: () => seated,
+    offset: () => offset,
+    update(headY, dt) {
+      if (!Number.isFinite(headY)) return offset;
+      let eye = headY + offset;
+      if (recheck >= 0) {
+        recheck -= dt;
+        if (recheck < 0 && Math.abs(eye - target()) > tolerance) { offset = target() - headY; eye = target(); }
+      }
+      const off = eye < low || eye > target() + 0.6;
+      offFor = off ? offFor + dt : 0;
+      if (offFor > hold) { offset = target() - headY; eye = target(); offFor = 0; }
+      // Learn standing height only from readings that look like standing.
+      if (!seated && recheck < 0 && eye > 1.2 && eye < 2.1) typical = typical === null ? eye : typical + (eye - typical) * Math.min(1, dt * 0.05);
+      return offset;
+    },
+  };
+}
 
 // Radial deadzone, rescaled so the stick still reaches 1 at full deflection.
 export function shapeStick(x, y, deadzone = XR_COMFORT.deadzone) {

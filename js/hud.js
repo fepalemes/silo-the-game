@@ -48,14 +48,15 @@ export function initHud() {
     if (depth !== lastDepth) el["depth-marker"].style.top = depth;
     lastDepth = depth;
   }
-  function showLore(station) {
-    el["lore-title"].textContent = `${station.name} · NÍVEL ${station.level}`;
-    el["lore-body"].replaceChildren(...station.lore.map((text) => {
+  function showText(title, lines) {
+    el["lore-title"].textContent = title;
+    el["lore-body"].replaceChildren(...lines.map((text) => {
       const p = document.createElement("p"); p.textContent = text; return p;
     }));
     el["lore-panel"].hidden = false;
   }
-  return { showStart, hideStart, setPaused, setLocation, setDepth, showLore,
+  const showLore = (station) => showText(`${station.name} · NÍVEL ${station.level}`, station.lore);
+  return { showStart, hideStart, setPaused, setLocation, setDepth, showLore, showText,
     setInteractVisible: (visible) => { el["interact-prompt"].hidden = !visible; },
     hideLore: () => { el["lore-panel"].hidden = true; },
     isLoreOpen: () => !el["lore-panel"].hidden,

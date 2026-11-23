@@ -113,6 +113,48 @@ const QUEST = 'Mozilla/5.0 (X11; Linux x86_64; Quest 3) AppleWebKit/537.36 (KHTM
  await page.waitForFunction(() => document.getElementById('lore-panel').hidden);
  assert(await page.evaluate(async () => (await import('/js/main.js')).progress.snapshot().records.includes('topo')), 'the record counts as read');
 
+ // The menu: B opens it, the beam points at an entry, the trigger takes it.
+ // Looking straight ahead, so the panel opens where the hand can be aimed.
+ await page.evaluate(() => { Object.assign(window.__fakeXR.head, { yaw: 0, pitch: 0 }); Object.assign(window.__fakeXR.right.pose, { yaw: 0, pitch: 0 }); });
+ await frames(2);
+ const menuOpen = () => page.evaluate(async () => Boolean((await import('/js/main.js')).xrHud?.menuOpen()));
+ await page.evaluate(() => { window.__fakeXR.right.buttons[5].pressed = true; });
+ await frames(2);
+ await page.evaluate(() => { window.__fakeXR.right.buttons[5].pressed = false; });
+ await frames(2);
+ assert(await menuOpen(), 'B opens the menu');
+ const frozen = await read();
+ await page.evaluate(() => { window.__fakeXR.left.axes[3] = -1; });
+ await frames(4);
+ await page.evaluate(() => { window.__fakeXR.left.axes[3] = 0; });
+ assert.deepEqual((await read()).state, frozen.state, 'the menu freezes the stick');
+ // Aim up at the first entry, "Continuar", and pull the trigger.
+ await page.evaluate(() => { Object.assign(window.__fakeXR.right.pose, { x: 0, y: 1.2, z: -0.3, yaw: 0, pitch: 0.76 }); });
+ await frames(3);
+ assert.equal(await page.evaluate(async () => (await import('/js/main.js')).xrHud.menuHover()), 0, 'the beam picks out the entry it points at');
+ await page.screenshot({ path: 'shots/xr-menu.png' });
+ await page.evaluate(() => window.__fakeXR.trigger('right'));
+ await frames(2);
+ assert(!(await menuOpen()), 'the trigger on "Continuar" closes it');
+ await page.evaluate(() => { Object.assign(window.__fakeXR.right.pose, { x: 0.2, y: 1.2, z: -0.3, pitch: 0 }); });
+
+ // Off and back on: the headset returns with the floor at head height.
+ const standing = await read();
+ await page.evaluate(() => {
+  const s = window.__fakeXR.session;
+  window.__fakeXR.head.y = 0.15;
+  Object.defineProperty(s, 'visibilityState', { value: 'visible', configurable: true });
+  s.dispatchEvent(new Event('visibilitychange'));
+ });
+ await frames(16);
+ let back = await read();
+ assert(Math.abs(back.eye.y - back.state.y - 1.7) < 0.05, `back from standby the eyes are at standing height again (${(back.eye.y - back.state.y).toFixed(2)}m)`);
+ await page.evaluate(() => { window.__fakeXR.head.y = 1.7; window.__fakeXR.session.dispatchEvent(new Event('visibilitychange')); });
+ await frames(16);
+ back = await read();
+ assert(Math.abs(back.eye.y - back.state.y - 1.7) < 0.05, `and the floor found again does not lift them (${(back.eye.y - back.state.y).toFixed(2)}m)`);
+ assert(Math.abs(standing.eye.y - standing.state.y - 1.7) < 0.05, 'standing height was right to begin with');
+
  // Taking the headset off.
  await page.evaluate(() => window.__fakeXR.session.end());
  await page.waitForFunction(() => !document.getElementById('pause-screen').hidden);
@@ -126,6 +168,6 @@ const QUEST = 'Mozilla/5.0 (X11; Linux x86_64; Quest 3) AppleWebKit/537.36 (KHTM
 
  if (errors.length) console.error(errors.join('\n'));
  assert.deepEqual(errors, [], 'no runtime errors');
- console.log('XR CHECKS PASSED: headset budget, session start, eye height, stick walking, comfort vignette, snap turn, pointing, trigger reads and closes a record, session end restores the screen');
+ console.log('XR CHECKS PASSED: headset budget, session start, eye height, stick walking, comfort vignette, snap turn, pointing, trigger reads and closes a record, menu on B with beam and trigger, eye height restored after standby, session end restores the screen');
  } finally { await browser.close(); }
 })().catch(e => { console.error(e); process.exit(1); });

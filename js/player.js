@@ -1,7 +1,7 @@
 import { PLAYER_SPEED, WORLD } from "./config.js";
 import { resolveMove } from "./collision.js";
 import { clamp } from "./mathutils.js";
-import { alignRig, stepLocomotion, XR_COMFORT } from "./xr/locomotion.js";
+import { alignRig, createHeightGuard, stepLocomotion, XR_COMFORT } from "./xr/locomotion.js";
 
 const MAX_PITCH = 1.5;
 
@@ -30,6 +30,10 @@ export function createPlayer({ camera, domElement, layout, initialState, onLockC
   let pose = { x: 0, z: 0, yaw: 0 };
   let lastHead = null;
   let strideLeft = XR_COMFORT.stride;
+  const height = createHeightGuard({ standing: WORLD.eyeHeight });
+  let fastXR = false;
+  // Seated needs a head pose to measure from; held until the first one.
+  let pendingSeated = null;
   // "Active" is what the rest of the game means by playing: the mouse is
   // captured, or a headset session is running. Reported on change only, so
   // handing over from one to the other does not flash the pause screen.
@@ -108,16 +112,18 @@ export function createPlayer({ camera, domElement, layout, initialState, onLockC
 
   function updateXR(dt) {
     const head = xr.readHead();
+    if (pendingSeated !== null) { height.setSeated(pendingSeated, head.y); pendingSeated = null; }
     const recentred = lastHead && Math.hypot(head.x - lastHead.x, head.z - lastHead.z) > XR_COMFORT.recentreJump;
     if (!lastHead || recentred) pose = alignRig(state, head, pose.yaw);
     lastHead = head;
 
     // A record being read freezes the stick, never the head.
     const input = suspended ? IDLE : xr.readInput();
-    const result = stepLocomotion(layout, state, pose, head, input, dt);
+    const tune = fastXR ? { ...XR_COMFORT, walk: XR_COMFORT.walk * XR_COMFORT.fast, brisk: XR_COMFORT.brisk * XR_COMFORT.fast } : XR_COMFORT;
+    const result = stepLocomotion(layout, state, pose, head, input, dt, tune);
     Object.assign(state, result.state);
     pose = result.rig;
-    rig.position.set(pose.x, state.y, pose.z);
+    rig.position.set(pose.x, state.y + height.update(head.y, dt), pose.z);
     rig.rotation.y = pose.yaw;
 
     const moving = result.walked > 1e-4;
@@ -204,6 +210,13 @@ export function createPlayer({ camera, domElement, layout, initialState, onLockC
     exitXR,
     requestLock,
     setSuspended: (value) => { suspended = value; clearKeys(); },
+    // Headset comfort, from the in-headset menu (js/main.js).
+    trackingReset: () => height.suspect(),
+    recalibrateHeight: () => { if (lastHead) height.recalibrate(lastHead.y); },
+    setSeated: (on) => { if (lastHead) height.setSeated(on, lastHead.y); else pendingSeated = Boolean(on); },
+    isSeated: () => (pendingSeated !== null ? pendingSeated : height.isSeated()),
+    setFastXR: (on) => { fastXR = Boolean(on); },
+    isFastXR: () => fastXR,
     getState: () => state,
     // Puts the body somewhere else outright. In a headset the rig has to be
     // lined up under the head again, or the next frame would try to walk the

@@ -47,7 +47,7 @@ const BASE = process.env.BASE || 'http://localhost:8080';
   const { scene, layout } = await import('/js/main.js');
   const THREE = await import('three');
   const { WORLD, LEVEL_HEIGHT } = await import('/js/config.js');
-  const { resolveMove } = await import('/js/collision.js');
+  const { resolveMove, surfaceY } = await import('/js/collision.js');
   scene.updateMatrixWorld(true);
 
   const STEP = 0.9, EYE = WORLD.eyeHeight, R = WORLD.landingR;
@@ -125,12 +125,14 @@ const BASE = process.env.BASE || 'http://localhost:8080';
     const zone = Math.hypot(cell.x, cell.z) <= R ? 'ring' : 'wing';
     for (let i = 0; i < 8; i++) {
      const a = (i / 8) * Math.PI * 2 + 0.13;
-     for (const rise of [0, 0.45, -0.45]) {
+     // Steep ones too (about 60 degrees): in a headset people lean on the
+     // parapet and look straight up and down the facades.
+     for (const rise of [0, 0.45, -0.45, 1.7, -1.7]) {
       // Level rays cross the whole silo. Tilted ones only probe the junctions
       // of wall with floor and ceiling, and stop before leaving this storey -
       // far enough to reach the ceiling of the tallest room (the generator
       // hall, 9.4m), or a ray ending in mid-air under it counts as a leak.
-      const far = rise ? 22 : 200, scale = 1 / Math.hypot(1, rise);
+      const far = rise ? (Math.abs(rise) > 1 ? 12 : 22) : 200, scale = 1 / Math.hypot(1, rise);
       const hit = cast(targets, cell.x, st.y + EYE, cell.z, Math.cos(a), rise, Math.sin(a), far);
       if (!escaped(hit, cell.x, cell.z, Math.cos(a) * scale, Math.sin(a) * scale, far)) continue;
       leaks++;
@@ -138,6 +140,35 @@ const BASE = process.env.BASE || 'http://localhost:8080';
      }
     }
    }
+   // --- The stair down from this level --------------------------------------
+   // Never measured before: the flood stays on the floor. Standing on the
+   // treads at three radii, every few steps, looking all round and up and
+   // down, nothing may be seen through to the silo's shell.
+   let stairLeaks = 0;
+   const below = layout.stations[st.index + 1];
+   if (below) {
+    // Wide enough in height for the steep rays to land on something.
+    const stairTargets = roots.filter((root) => root.box.max.y > below.y - 45 && root.box.min.y < st.y + 45).map((root) => root.object);
+    for (let a = st.theta + WORLD.landingHalfAngle; a < below.theta; a += 0.42) {
+     const y = surfaceY(layout, a) + EYE;
+     for (const r of [WORLD.shaftR + 0.5, (WORLD.shaftR + WORLD.stairOuterR) / 2, WORLD.stairOuterR - 0.45]) {
+      const ox = r * Math.cos(a), oz = r * Math.sin(a);
+      for (let i = 0; i < 12; i++) {
+       const d = (i / 12) * Math.PI * 2 + 0.07;
+       for (const rise of [0, 0.45, -0.45, 1.7, -1.7]) {
+        const far = rise ? 40 : 200, scale = 1 / Math.hypot(1, rise);
+        const hit = cast(stairTargets, ox, y, oz, Math.cos(d), rise, Math.sin(d), far);
+        if (!escaped(hit, ox, oz, Math.cos(d) * scale, Math.sin(d) * scale, far)) continue;
+        stairLeaks++;
+        const cell = { x: ox, z: oz };
+        record('LEAK', cell, { what: `from the stair, ${rise > 1 ? 'looking up steeply' : rise > 0 ? 'looking up' : rise < -1 ? 'looking down steeply' : rise < 0 ? 'looking down' : 'level'}: ${hit ? describe(hit.object) : 'open fog'}`, toward: +d.toFixed(2) }, { tx: ox + Math.cos(d) * 10, ty: y + rise * 10, tz: oz + Math.sin(d) * 10 });
+        faults.at(-1).pose.y = y;
+       }
+      }
+     }
+    }
+   }
+   leaks += stairLeaks;
    summary.push({ level: st.level, id: st.id, cells: cells.size, leaks, noFloor, noRoof, walksThrough });
   }
 

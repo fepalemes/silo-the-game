@@ -62,14 +62,14 @@
           <div><b>W A S D</b><span>mover</span></div>
           <div><b>Mouse</b><span>olhar</span></div>
           <div><b>Shift</b><span>correr</span></div>
-          <div><b>E</b><span>ler / fechar registro</span></div>
+          <div><b>E</b><span>ler, falar, pegar</span></div>
           <div><b>M</b><span>som ligado / desligado</span></div>
           <div><b>Esc</b><span>pausar</span></div>
           <div><b>P</b><span>salvar progresso</span></div>
         </div>
         <button id="start-button" class="cta" disabled>Preparando a descida…</button>
         <button id="vr-button" class="cta secondary" hidden>Entrar com o óculos →</button>
-        <p id="vr-hint" class="credit" hidden>No óculos: analógico esquerdo anda · analógico direito gira · gatilho examina · apertar a empunhadura apressa o passo.</p>
+        <p id="vr-hint" class="credit" hidden>No óculos: analógico esquerdo anda · analógico direito gira · gatilho examina · empunhadura ou clique no analógico corre · Y ou B abre o menu.</p>
         <p id="status" role="status">Construindo as galerias e a escadaria.</p>
         <p class="credit">Experiência de fã não oficial, inspirada em Silo, da Apple TV.</p>
       </div>
@@ -83,6 +83,11 @@
         <button id="resume-button" class="cta">Continuar →</button>
         <button id="vr-resume-button" class="cta secondary" hidden>Continuar com o óculos →</button>
         <button id="save-button" class="cta secondary">Salvar progresso · P</button>
+        <div class="travel">
+          <label for="travel-select">Ir para um setor já visitado</label>
+          <select id="travel-select"><option value="">Nenhum setor visitado ainda</option></select>
+          <button id="travel-button" class="cta secondary" disabled>Ir →</button>
+        </div>
         <p class="credit">Salvo neste navegador. Retome pelo botão Continuar ao abrir o jogo.</p>
         <p id="pause-status" role="status"></p>
       </div>

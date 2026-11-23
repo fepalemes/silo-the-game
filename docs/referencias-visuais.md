@@ -396,3 +396,30 @@ As salas dos departamentos também saíram do kit (`js/world/main-rooms.js`):
 Interpretação: a disposição das salas em volta do posto, a quantidade e a
 posição das escadinhas e sacadas, as cores de porta, e os interiores que os
 mapas e as fotos não detalham.
+
+### Frestas pontilhadas e o teste da escada — 22/11/2026
+
+Jogando no Quest 3 apareciam "vãos" por toda parte: linhas pontilhadas de
+luz atravessando escadas e lajes. Nenhum raio do `test:world` escapava para
+o casco, mesmo depois de ganhar raios a ~60° e uma varredura a partir da
+própria escada. A causa foi achada escondendo grupos e fotografando: o
+casco, a coluna central e seus conduítes, as colunas das galerias e os canos
+de serviço eram, cada um, uma malha de 1,2 km com um triângulo do topo ao
+fundo. Cortados todo quadro pelo alcance de 160 m da câmera, esses
+triângulos perdem precisão de profundidade, e as bordas vazavam através do
+que estava na frente.
+
+Agora tudo o que corre a altura do silo é feito em fatias de seis níveis
+(`buildVerticalStructure` em `scenery.js`), subdivididas a cada nível e
+escondidas com os andares distantes. A regra: nada mais alto que alguns
+níveis numa peça só.
+
+### Gente no silo
+
+As referências estão sempre cheias de gente, e sem ela o silo parecia uma
+ruína. `js/world/people.js` povoa os níveis em volta do jogador: gente
+andando nas galerias, debruçada no guarda-corpo, conversando, carregadores
+na escada e gente nas salas (cafeteria, posto do xerife, bar, mercado,
+oficina, enfermaria). As figuras são simples e iguais no corpo e diferem na
+roupa, que segue o setor. São seis malhas instanciadas para todo mundo.
+A jornada que elas conduzem está no README.

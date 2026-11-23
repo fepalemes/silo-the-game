@@ -550,7 +550,7 @@ export function buildStation(scene, station, flags, interactables) {
       (builder || (() => {}))(wing.localGroup, station, wing.roomStart, wing.roomEnd, wing.roomHalfW, spec);
       interactables.push({ mesh: wing.loreMesh, station });
     } else if (SIDE_ROOM_BUILDERS[spec.kind]) {
-      SIDE_ROOM_BUILDERS[spec.kind](wing.localGroup, station, wing.roomStart, wing.roomEnd, wing.roomHalfW, { ...spec, wing: wingLabels[i - 1] || `${i}` });
+      SIDE_ROOM_BUILDERS[spec.kind](wing.localGroup, station, wing.roomStart, wing.roomEnd, wing.roomHalfW, { ...spec, wing: wingLabels[i - 1] || `${i}`, interactables });
     } else {
       themeGeneric(wing.localGroup, station, wing.roomStart, wing.roomEnd, wing.roomHalfW, wingLabels[i - 1] || `${i}`);
     }

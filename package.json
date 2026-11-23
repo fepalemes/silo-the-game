@@ -14,6 +14,7 @@
     "test:residential": "node tools/residential-check.cjs",
     "test:xr": "node tools/xr-check.cjs",
     "test:world": "node tools/world-check.cjs",
+    "test:journey": "node tools/journey-check.cjs",
     "audit": "node tools/audit.cjs"
   },
   "devDependencies": {

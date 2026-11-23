@@ -215,8 +215,9 @@ como engasgo ao chegar num andar novo.
 | `W A S D`   | Mover                   |
 | Mouse       | Olhar em volta          |
 | `Shift`     | Correr                  |
-| `E`         | Examinar registros/lore |
-| `Esc`       | Pausar (libera o mouse) |
+| `E`         | Examinar registros, falar com as pessoas, pegar objetos |
+| `Esc`       | Pausar (libera o mouse); na pausa, ir para um setor já visitado |
+| `P`         | Salvar progresso        |
 
 No óculos (ver "No óculos (Meta Quest)" abaixo):
 
@@ -224,9 +225,16 @@ No óculos (ver "No óculos (Meta Quest)" abaixo):
 | -------------------------------- | ----------------------------- |
 | Analógico esquerdo               | Andar, na direção do olhar    |
 | Analógico direito                | Girar em passos de 30°        |
-| Gatilho (mão direita)            | Examinar / abrir / fechar     |
-| Empunhadura ou clique no analógico esquerdo | Apressar o passo   |
+| Gatilho (mão direita)            | Examinar, falar, pegar, abrir / fechar; no menu, escolher |
+| Empunhadura (qualquer mão) ou clique no analógico | Correr        |
+| Y ou B                           | Menu: continuar, ir para um setor visitado, salvar, velocidade normal/rápida, modo sentado, recalibrar altura, sair do VR |
 | Andar de verdade                 | Anda — o corpo segue a cabeça |
+
+O botão de menu do próprio controle é do sistema e não chega à página, por
+isso o menu do jogo fica no Y/B. Se o óculos voltar do descanso com a visão
+rente ao chão (o Quest às vezes perde a altura do piso), o jogo recoloca os
+olhos na altura de pé sozinho; "Recalibrar altura" no menu faz o mesmo na
+hora, e o "Modo sentado" fixa a altura de quem joga sentado.
 
 ## No óculos (Meta Quest)
 
@@ -292,6 +300,34 @@ uma sessão inteira contra um dispositivo WebXR falso (`tools/fake-xr.js`):
 entrar, andar com o analógico, girar, apontar para um registro, ler com o
 gatilho e sair. Ele prova que o código do modo funciona; taxa de quadros e
 conforto só o aparelho responde.
+
+## A jornada e as pessoas
+
+O silo é habitado (`js/world/people.js`): gente andando pelas galerias, se
+debruçando no guarda-corpo, conversando nas portas, carregadores subindo e
+descendo a escada, e gente trabalhando ou sentada nas salas — a cafeteria
+cheia, o bar, o mercado, a oficina. A roupa segue o setor (macacão escuro
+na Mecânica, cinza na TI, preto no judiciário, cáqui na polícia). Olhe para
+alguém e aperte E (ou o gatilho) para ouvir o que diz. As pessoas não
+bloqueiam a passagem: param e esperam quem vem.
+
+Depois dos primeiros passos no nível 1, começa uma jornada que atravessa o
+silo (`js/quests.js`):
+
+1. Apresentar-se ao **xerife**, no posto redondo do nível 1.
+2. Levar o malote à **delegada** do nível 18.
+3. Buscar a válvula com o chefe de turno da **Mecânica**, no 128.
+4. Entregá-la à engenheira da **Água**, no 102.
+5. Achar as cinco **relíquias** de antes do Pacto, escondidas no arquivo
+   (39), no banco de sementes (66), na alfaiataria (68), na botica (73) e no
+   almoxarifado da Mecânica (128).
+6. Levá-las ao técnico diante do Cofre, na **TI** (34).
+7. Descer ao **Limiar**, no 148, e ler o registro.
+
+O painel de missão mostra o passo atual e o que falta. Ninguém pula etapa,
+e relíquias achadas antes da hora contam quando a busca começa. Cada
+departamento visitado entra na lista "ir para um setor visitado" da pausa e
+do menu do óculos.
 
 ## O que existe nesta versão
 

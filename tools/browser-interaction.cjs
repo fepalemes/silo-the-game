@@ -47,11 +47,12 @@ try {
    const {player}=await import('/js/main.js'),{WING_OFFSETS}=await import('/js/config.js');const a=WING_OFFSETS[0];
    Object.assign(player.getState(),{x:55*Math.cos(a),z:55*Math.sin(a),y:0,theta:0,level:0});
  });
- await page.waitForFunction(()=>document.getElementById('mission-summary').textContent.includes('Missão concluída'));
+ // The first steps done, the journey goes on to the sheriff (js/quests.js).
+ await page.waitForFunction(()=>document.getElementById('mission-summary').textContent.includes('Apresente-se ao xerife'));
  await page.keyboard.press('p');
  assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('silo18.progress.v1')).progress.completed.length),3);
  await page.screenshot({path:'shots/mission-complete.png',timeout:120000});
  assert.deepEqual(errors,[]);
- console.log('INTERACTION + BLOOM PASSED: visible plaque, E open/close, reading blocks movement, pause, resize, manual save, reload restores position/orientation/objectives, mission completion, no runtime errors');
+ console.log('INTERACTION + BLOOM PASSED: visible plaque, E open/close, reading blocks movement, pause, resize, manual save, reload restores position/orientation/objectives, first steps lead on to the journey, no runtime errors');
 } finally {await browser.close()}
 })().catch(e=>{console.error(e);process.exit(1)});

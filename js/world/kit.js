@@ -378,3 +378,44 @@ export function noticeBoard(kit, x, y, z, { w = 1.2, h = 0.8, rotY = -Math.PI / 
 export function wallPanel(kit, x, y, z, w, h, mat, { rotY = -Math.PI / 2, depth = 0.03 } = {}) {
   kit.add(new THREE.BoxGeometry(w, h, depth), kitMaterial(mat), { x, y, z, rotY, solid: false });
 }
+
+// --- People and relics ---------------------------------------------------------
+
+// Somebody belongs here (people.js): a spot in the wing's frame, turned to
+// the world's. `yaw` faces the body's front along local +z at 0, +x at PI/2,
+// -x at -PI/2. `pose`: work, sit, chat, lean. `character`: a named person of
+// the journey (quests.js).
+export function personAt(group, x, z, yaw, pose = "work", extra = {}) {
+  const c = group.userData.collision;
+  if (!c) return;
+  const a = c.angle, st = c.station;
+  (st.npcSpots ||= []).push({ x: x * Math.cos(a) - z * Math.sin(a), z: x * Math.sin(a) + z * Math.cos(a), yaw: yaw - a, pose, ...extra });
+}
+
+// One of the five relics (quests.js RELICS), small and faintly catching the
+// light, where the player can pick it up. Registered with the interactables.
+const relicMaterial = new THREE.MeshStandardMaterial({ color: 0xd9c08a, emissive: 0x3a2a12, emissiveIntensity: 1, roughness: 0.45, metalness: 0.35 });
+const relicShapes = {
+  livro: () => new THREE.BoxGeometry(0.22, 0.04, 0.3),
+  semente: () => new THREE.BoxGeometry(0.12, 0.01, 0.18),
+  retalho: () => new THREE.BoxGeometry(0.26, 0.03, 0.2),
+  frasco: () => new THREE.CylinderGeometry(0.04, 0.045, 0.16, 10),
+  isqueiro: () => new THREE.BoxGeometry(0.04, 0.07, 0.025),
+};
+export function relicAt(group, interactables, id, x, y, z) {
+  const c = group.userData.collision;
+  if (!interactables || !c) return null;
+  const geometry = relicShapes[id]?.() || new THREE.BoxGeometry(0.15, 0.1, 0.15);
+  geometry.computeBoundingBox();
+  const mesh = new THREE.Mesh(geometry, relicMaterial);
+  mesh.position.set(x, y - geometry.boundingBox.min.y, z);
+  mesh.rotation.y = 0.4;
+  mesh.name = `relic-${id}`;
+  group.add(mesh);
+  // A bigger, invisible target: a lighter is hard to point at.
+  const target = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.3, 0.4), new THREE.MeshBasicMaterial({ visible: false }));
+  target.position.set(x, y + 0.1, z);
+  group.add(target);
+  interactables.push({ mesh: target, relic: id, visual: mesh, station: c.station });
+  return mesh;
+}

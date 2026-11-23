@@ -4,7 +4,7 @@ import { makeGrateTexture, mulberry32 } from "../textures.js";
 import { addBox } from "./primitives.js";
 import {
   Kit, barrel, bench, bottles, ceilingPanel, chair, conduit, controlDesk, crate, desk, filingCabinet, gauge,
-  kitMaterial, noticeBoard, pendant, plant, shelf, shelfLoad, sprout, terminal, wallPanel,
+  kitMaterial, noticeBoard, pendant, personAt, plant, shelf, shelfLoad, sprout, terminal, wallPanel,
 } from "./kit.js";
 
 // The departments' own rooms (wing 0), furnished from the same kit as their
@@ -54,6 +54,8 @@ function judicial(group, station, x0, x1, hw) {
     kit.span(x0 + 0.2, x1 - 0.2, 1.2, 1.25, s * (hw - 0.07), s * hw, "brass", { solid: false });
   }
   for (let i = 0; i < 3; i++) for (const s of [-1, 1]) kit.box(x0 + 2 + i * 3.4, H - 0.12, s * (hw - 0.2), 1.4, 0.08, 0.12, "glowRed", { solid: false });
+  personAt(group, x1 - 0.85, 0, -Math.PI / 2, "sit", { dy: 0.4, wear: "judicial" });
+  for (const [row, s] of [[0, -1], [1, 1], [2, -1], [3, 1]]) personAt(group, x0 + 1.6 + row * 1.3, s * 2.6, Math.PI / 2, "sit");
   lights(kit, x0, x1, station.light, 2, 9);
   kit.finish();
 }
@@ -81,6 +83,9 @@ function ninho(group, station, x0, x1, hw) {
   bench(kit, x0 + 1.3, hw - 0.35, { rotY: Math.PI / 2, len: 1.8 });
   kit.cyl(x1 - 0.5, 0.9, -hw + 0.4, 0.03, 1.8, "darkWood", { seg: 6 });
   kit.box(x1 - 0.5, 1.6, -hw + 0.4, 0.3, 0.55, 0.3, "fabricGrey", { solid: false });
+  personAt(group, x0 + 3.3, 1.6, -Math.PI / 2, "work", { character: "delegada", wear: "law" });
+  personAt(group, x0 + 5.2, -2.4, -Math.PI / 2, "sit", { wear: "law" });
+  personAt(group, x0 + 1.3, hw - 0.35, Math.PI, "sit");
   lights(kit, x0, x1, 0xffe2b8, 2, 10);
   for (const x of [x0 + 3.5, x0 + 7]) ceilingPanel(kit, x, 0, H, { w: 1.4 });
   kit.finish();
@@ -111,6 +116,7 @@ function creche(group, station, x0, x1, hw) {
   kit.span(x1 - 3.2, x1 - 1.0, 0.002, 0.014, -1.2, 1.2, "fabricMustard", { solid: false });
   for (let k = 0; k < 9; k++) kit.box(x1 - 3 + rand() * 1.8, 0.07, -1 + rand() * 2, 0.12, 0.12, 0.12, colours[k % colours.length], { rotY: rand() * 3, solid: false });
   plant(kit, x0 + 0.5, 0, hw - 0.5, { s: 1.5 });
+  personAt(group, x1 - 1.0, 1.0, -Math.PI / 2, "chat");
   lights(kit, x0, x1, station.light, 2, 10);
   for (const x of [x0 + 2.5, x0 + 6]) ceilingPanel(kit, x, 0, H, { w: 1.4 });
   kit.finish();
@@ -146,6 +152,8 @@ function enfermaria(group, station, x0, x1, hw) {
   kit.span(x0 + 0.6, x0 + 1.2, 0, 0.88, hw - 0.6, hw - 0.05, "ceramic");
   kit.rod([x0 + 0.9, 0.88, hw - 0.15], [x0 + 0.9, 1.15, hw - 0.3], 0.02, "steel");
   for (let x = x0 + 1.5; x < x1 - 1; x += 2.2) ceilingPanel(kit, x, 0, H, { w: 1.5, d: 0.3 });
+  personAt(group, x0 + 3.0, -1.7, Math.PI, "work", { wear: "medical" });
+  personAt(group, x1 - 1.9, 0.5, Math.PI / 2, "work", { wear: "medical" });
   lights(kit, x0, x1, 0xeef6f2, 2, 11);
   kit.finish();
 }
@@ -173,6 +181,10 @@ function bazar(group, station, x0, x1, hw) {
     kit.rod([x, 2.7, 0], [x, 2.45, 0], 0.01, "darkMetal");
     kit.cyl(x, 2.4, 0, 0.07, 0.1, "glowWarm", { seg: 8, solid: false });
   }
+  for (const [x, s] of [[x0 + 1.6, -1], [x0 + 4.3, 1], [x0 + 7.0, -1], [x0 + 9.7, 1]]) {
+    personAt(group, x, s * (hw - 0.35), s > 0 ? Math.PI : 0, "work");
+    personAt(group, x + 0.6, s * 3.7, s > 0 ? 0 : Math.PI, "chat");
+  }
   kit.sign(["O BAZAR", "TUDO JÁ FOI OUTRA COISA"], { x: x1 - 0.03, y: 2.6, z: 0, w: 1.8, h: 0.45, fg: 0xe8b25a, bg: 0x2a1d10 });
   lights(kit, x0, x1, station.light, 3, 9);
   kit.finish();
@@ -198,6 +210,8 @@ function rocas(group, station, x0, x1, hw) {
   kit.span(x1 - 1.6, x1 - 0.8, 0.25, 0.6, -0.4, 0.3, "rust");
   kit.cyl(x1 - 1.7, 0.18, -0.05, 0.18, 0.06, "rubber", { rotX: Math.PI / 2, seg: 12, solid: false });
   barrel(kit, x0 + 0.6, hw - 0.5, { mat: "paintBlue" });
+  personAt(group, x0 + 4.0, 2.8, 0, "work", { wear: "farm" });
+  personAt(group, x0 + 8.0, -2.8, Math.PI, "work", { wear: "farm" });
   kit.sign(["CADA SEMENTE É CONTADA", "AS ROÇAS · 66"], { x: x0 + 0.03, y: 2.4, z: -hw + 0.9, w: 1.3, h: 0.36, rotY: Math.PI / 2, fg: 0xd8e8c0, bg: 0x1e2a1a });
   lights(kit, x0, x1, station.light, 2, 9);
   kit.finish();
@@ -230,6 +244,7 @@ function agua(group, station, x0, x1, hw) {
   gauge(kit, x0 + 1.18, 0.75, -1.8, { r: 0.1 });
   kit.span(x0 + 3.2, x0 + 5.8, 0.002, 0.006, -0.4, 0.6, "glassDark", { solid: false });
   conduit(kit, x0, x1, 3.0, hw - 0.05);
+  personAt(group, x0 + 2.6, 0.2, -Math.PI / 2, "chat", { character: "engenheira", wear: "mechanical" });
   lights(kit, x0, x1, station.light, 2, 9);
   for (const x of [x0 + 2, x0 + 8.5]) ceilingPanel(kit, x, 0, H, { w: 1.5, glow: "glowCyan" });
   kit.finish();
@@ -261,6 +276,8 @@ function ti(group, station, x0, x1, hw) {
   kit.torus(vx - 0.55, 1.25, 0, 0.3, 0.03, "darkMetal", { rotY: Math.PI / 2, seg: 18 });
   for (let i = 0; i < 7; i++) kit.span(vx - 0.34, vx - 0.31, 2.7 + i * 0.055, 2.73 + i * 0.055, -0.35, 0.35, "rubber", { solid: false });
   kit.box(vx - 0.35, 2.6, 0.55, 0.02, 0.06, 0.06, "glowRed", { solid: false });
+  personAt(group, x0 + 6.8, -0.6, Math.PI / 2, "sit", { wear: "it" });
+  personAt(group, vx - 1.2, 0.9, -Math.PI / 2, "chat", { character: "tecnico", wear: "it" });
   kit.sign(["O COFRE", "ACESSO RESTRITO"], { x: vx - 0.33, y: 3.08, z: 0, w: 1.2, h: 0.36, fg: 0x9fd4ff, bg: 0x0a1016 });
   lights(kit, x0, vx, station.light, 2, 8);
   for (const x of [x0 + 2, x0 + 5.5]) ceilingPanel(kit, x, 0, H, { w: 1.4, glow: "glowCyan" });
@@ -301,6 +318,9 @@ function mecanica(group, station, x0, x1, hw) {
     items: (_, y) => shelfLoad(kit, x1 - 0.35, 1.8, y, { rotY: 0, w: 2.4, d: 0.5, mats: ["paintRed", "paintBlue", "rust", "steel", "cardboard"], size: [0.4, 0.24, 0.3], gap: 0.05, rand }) });
   for (let k = 0; k < 3; k++) barrel(kit, x1 - 0.5, -0.6 + k * 0.7, { mat: k % 2 ? "paintRed" : "rust" });
   kit.span(cx - 1.6, cx - 0.4, 0.012, 0.016, -1.6, -0.4, "rubber", { solid: false });
+  personAt(group, x0 + 5.6, -0.4, -Math.PI / 2, "chat", { character: "chefe", wear: "mechanical" });
+  personAt(group, x0 + 3.4, -hw + 1.8, Math.PI, "work", { wear: "mechanical" });
+  personAt(group, x0 + 2.4, hw - 1.25, 0, "work", { wear: "mechanical" });
   lights(kit, x0, x1, station.light, 3, 10);
   for (const x of [x0 + 3, x0 + 10]) pendant(kit, x, -1.5, H, { drop: 0.7, r: 0.4 });
   kit.finish();

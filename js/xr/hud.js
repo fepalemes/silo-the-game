@@ -5,6 +5,7 @@
 //   wrist   level, zone and current objective, riding above the off hand
 //   record  the text of the record being read, held up in front of the plaque
 //   prompt  what the trigger will do, at the end of the pointing beam
+//   menu    the pause menu, opened with Y or B and pointed at like a record
 //
 // Each is one canvas, redrawn only when its text changes: a panel repainted
 // every frame is a texture upload every frame.
@@ -76,8 +77,11 @@ export function createXRHud({ scene, camera }) {
   reticle.renderOrder = 901;
   reticle.visible = false;
   reticle.raycast = () => {};
+  const menu = makePanel(1024, 1000, 0.8);
+  // The one panel that is pointed at: it needs its hit test back.
+  delete menu.mesh.raycast;
   const root = new THREE.Group();
-  root.add(wrist.mesh, record.mesh, prompt.mesh, reticle);
+  root.add(wrist.mesh, record.mesh, prompt.mesh, reticle, menu.mesh);
   scene.add(root);
 
   const level = { number: "", name: "", sub: "" };
@@ -151,6 +155,85 @@ export function createXRHud({ scene, camera }) {
     });
   }
 
+  // --- Menu --------------------------------------------------------------------
+  // A list of entries in one or two columns; `hover` is the one under the
+  // beam. Placed once in front of the face when it opens and left there: the
+  // stick is frozen while it is open, so nothing carries the player away.
+  const MENU_TOP = 150, MENU_FOOT = 86;
+  let menuState = null;
+  const layoutOf = (count) => {
+    const columns = count > 8 ? 2 : 1, rows = Math.ceil(count / columns);
+    return { columns, rows, rowHeight: Math.min(92, (menu.height - MENU_TOP - MENU_FOOT) / rows), colWidth: menu.width / columns };
+  };
+  function paintMenu() {
+    if (!menuState) return;
+    menu.paint(JSON.stringify(menuState), (ctx) => {
+      const { title, items, hover } = menuState, pad = 54;
+      ctx.fillStyle = INK;
+      ctx.font = `bold 44px ${MONO}`;
+      ctx.fillText(title.toUpperCase(), pad, 92, menu.width - pad * 2);
+      ctx.strokeStyle = RULE;
+      ctx.beginPath(); ctx.moveTo(pad, 118); ctx.lineTo(menu.width - pad, 118); ctx.stroke();
+      const { columns, rowHeight, colWidth, rows } = layoutOf(items.length);
+      items.forEach((item, i) => {
+        const col = Math.floor(i / rows), row = i % rows;
+        const x = col * colWidth + pad * (col ? 0.5 : 1), y = MENU_TOP + row * rowHeight, w = colWidth - pad * 1.5;
+        if (i === hover) {
+          ctx.fillStyle = "rgba(255,177,90,.22)";
+          ctx.fillRect(x - 14, y + 6, w + 28, rowHeight - 12);
+          ctx.fillStyle = "#ffb15a";
+          ctx.fillRect(x - 14, y + 6, 6, rowHeight - 12);
+        }
+        ctx.fillStyle = i === hover ? "#ffe2bd" : INK;
+        ctx.font = `${columns > 1 ? 30 : 38}px ${MONO}`;
+        ctx.fillText(item.label, x, y + rowHeight * 0.62, w);
+      });
+      ctx.fillStyle = DIM;
+      ctx.font = `24px ${MONO}`;
+      ctx.fillText("GATILHO · ESCOLHER      Y / B · FECHAR", pad, menu.height - 36);
+    });
+  }
+  function openMenu(title, items) {
+    const opening = !menuState;
+    menuState = { title, items: items.map((item) => ({ label: item.label })), hover: menuState?.hover ?? -1 };
+    if (menuState.hover >= items.length) menuState.hover = -1;
+    paintMenu();
+    if (!opening) return;
+    // Level in front of the face, a little below the eyes, facing them.
+    camera.getWorldPosition(head);
+    camera.getWorldDirection(toward);
+    toward.y = 0;
+    if (toward.lengthSq() < 1e-6) toward.set(0, 0, -1);
+    toward.normalize();
+    menu.mesh.position.copy(head).addScaledVector(toward, 0.95);
+    menu.mesh.position.y -= 0.12;
+    menu.mesh.lookAt(head.x, menu.mesh.position.y, head.z);
+    menu.mesh.visible = true;
+  }
+  function closeMenu() { menuState = null; menu.mesh.visible = false; }
+  const raycaster = new THREE.Raycaster(), rayOrigin = new THREE.Vector3(), rayDirection = new THREE.Vector3();
+  // Which entry the controller `ray` points at, or -1.
+  function menuHit(ray) {
+    if (!menuState || !ray) return -1;
+    ray.updateMatrixWorld();
+    rayOrigin.setFromMatrixPosition(ray.matrixWorld);
+    rayDirection.set(0, 0, -1).transformDirection(ray.matrixWorld);
+    raycaster.set(rayOrigin, rayDirection);
+    const hit = raycaster.intersectObject(menu.mesh, false)[0];
+    if (!hit?.uv) return -1;
+    const { rows, rowHeight, colWidth } = layoutOf(menuState.items.length);
+    const px = hit.uv.x * menu.width, py = (1 - hit.uv.y) * menu.height;
+    const row = Math.floor((py - MENU_TOP) / rowHeight), col = Math.floor(px / colWidth);
+    if (row < 0 || row >= rows) return -1;
+    const index = col * rows + row;
+    return index < menuState.items.length ? index : -1;
+  }
+  function setMenuHover(index) {
+    if (!menuState || menuState.hover === index) return;
+    menuState.hover = index;
+    paintMenu();
+  }
+
   const head = new THREE.Vector3(), toward = new THREE.Vector3(), hand = new THREE.Vector3();
   // Called once per frame while presenting. `grip` is the off hand, or null
   // when no controller is tracked - then the wrist panel simply is not there.
@@ -177,7 +260,7 @@ export function createXRHud({ scene, camera }) {
       record.mesh.lookAt(head);
     }
 
-    prompt.mesh.visible = reticle.visible = Boolean(promptText) && !recordOpen;
+    prompt.mesh.visible = reticle.visible = Boolean(promptText) && !recordOpen && !menuState;
     if (prompt.mesh.visible) {
       toward.subVectors(head, promptAt);
       const distance = toward.length();
@@ -201,6 +284,12 @@ export function createXRHud({ scene, camera }) {
     setNotice: (text) => { notice = text; paintWrist(); },
     showRecord,
     hideRecord: () => { recordOpen = false; },
+    openMenu,
+    closeMenu,
+    menuHit,
+    setMenuHover,
+    menuOpen: () => Boolean(menuState),
+    menuHover: () => menuState?.hover ?? -1,
     setPrompt,
   };
 }
@@ -251,5 +340,10 @@ export function createVignette(camera, { clear = 0.6, full = 0.92, strength = 0.
     material.opacity = 0;
     mesh.visible = false;
   }
-  return { update, reset, mesh };
+  // A blink over a jump (travel): closed at once, opening as it fades.
+  function flash() {
+    material.opacity = 1;
+    mesh.visible = true;
+  }
+  return { update, reset, flash, mesh };
 }

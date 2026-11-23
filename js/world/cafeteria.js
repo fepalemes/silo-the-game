@@ -17,6 +17,7 @@ import { makePlaqueTexture, makeWastelandTexture } from "../textures.js";
 import { getFloorSurface, getStructureSurface, getWallSurface, resolveSurface, STRUCTURE_COLORS, tint } from "./materials.js";
 import { buildAnnularSectorGeometry, buildBandGeometry } from "./primitives.js";
 import { letteringMaterial, mountPlate } from "./signs.js";
+import { personAt } from "./kit.js";
 import { scaleHexColor } from "../mathutils.js";
 
 const CAFETERIA_HEIGHT = CAFETERIA.height;
@@ -322,6 +323,16 @@ export function buildCafeteria(group, station, roomStart) {
     tables.setMatrixAt(i, dummy.matrix);
     obstacle(rho, a, 0.95, 0.88);
   });
+  // People at about every third table, and a few standing at the screen.
+  sets.forEach(({ rho, a }, i) => {
+    if (i % 3) return;
+    const p = at(rho, a), turn = -a - Math.PI / 2;
+    for (const [sx, side] of i % 2 ? [[-0.45, 1], [0.45, -1]] : [[0.45, 1]]) {
+      const lx = sx, lz = side * 0.62;
+      personAt(group, p.x + lx * Math.cos(turn) + lz * Math.sin(turn), p.z - lx * Math.sin(turn) + lz * Math.cos(turn), turn + (side > 0 ? Math.PI : 0), "sit");
+    }
+  });
+  for (const z of [-1.6, -0.4, 1.3]) personAt(group, cx + R - 5.2 + Math.abs(z) * 0.4, z, Math.PI / 2, "watch");
   tables.castShadow = tables.receiveShadow = true;
   tables.name = "cafeteria-tables";
   group.add(tables);

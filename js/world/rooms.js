@@ -5,7 +5,7 @@ import { buildBandGeometry } from "./primitives.js";
 import { tint } from "./materials.js";
 import {
   Kit, bars, barrel, bench, bottles, bunk, ceilingPanel, chair, conduit, controlDesk, crate, desk, filingCabinet,
-  gauge, kitMaterial, locker, noticeBoard, pendant, plant, shelf, shelfLoad, sprout, terminal, wallPanel,
+  gauge, kitMaterial, locker, noticeBoard, pendant, personAt, plant, relicAt, shelf, shelfLoad, sprout, terminal, wallPanel,
 } from "./kit.js";
 
 // The side rooms of every department (config.js SIDE_ROOMS): what each
@@ -169,6 +169,15 @@ function police(group, station, x0, x1, hw, spec) {
     const [fx, fz] = pos(3.4, a + 0.42);
     filingCabinet(kit, fx, fz, { rotY: -a - Math.PI / 2, h: 1.0 });
   }
+  // The sheriff, at the door of the office; two deputies at their desks.
+  {
+    const a = -1.15, [sx, sz] = pos(4.9, a);
+    personAt(group, sx, sz, Math.atan2(-Math.cos(a), -Math.sin(a)), "chat", { character: "xerife", wear: "law" });
+    for (const a2 of [Math.PI / 4, (5 * Math.PI) / 4]) {
+      const [hx, hz] = pos(3.9, a2);
+      personAt(group, hx, hz, Math.atan2(-Math.cos(a2), -Math.sin(a2)), "sit", { wear: "law" });
+    }
+  }
   // Notices and the wanted board on the wall, the radio by the office.
   for (const a of [-0.45, 2.45]) {
     const [nx, nz] = pos(R - 0.04, a);
@@ -280,6 +289,8 @@ function cells(group, station, x0, x1, hw, spec) {
   wallPanel(kit, x0 + 1.3, 1.6, -hw + 0.02, 0.6, 0.5, "darkWood", { rotY: 0 });
   for (let k = 0; k < 6; k++) kit.box(x0 + 1.08 + (k % 3) * 0.2, 1.7 - Math.floor(k / 3) * 0.2, -hw + 0.06, 0.03, 0.08, 0.02, "brass", { solid: false });
   bench(kit, x0 + 2.6, hw - 0.4, { rotY: Math.PI / 2, len: 2.0 });
+  personAt(group, x0 + 2.3, -hw + 1.55, Math.PI, "sit", { wear: "law" });
+  personAt(group, x1 - 0.55, -1.65, -Math.PI / 2, "sit");
   noticeBoard(kit, x0 + 0.03, 1.65, hw - 0.6, { rotY: Math.PI / 2, w: 0.8, rand });
   conduit(kit, x0, x1, 2.9, hw - 0.05);
   finish(kit, station, spec, x0, x1, { lights: 2, intensity: 8 });
@@ -308,6 +319,7 @@ function deputy(group, station, x0, x1, hw, spec) {
   kit.cyl(x0 + 0.5, 0.9, hw - 0.4, 0.03, 1.8, "darkWood", { seg: 6 });
   kit.box(x0 + 0.5, 1.6, hw - 0.4, 0.28, 0.5, 0.28, "fabricGrey", { solid: false });
   pendant(kit, mid + 0.6, 0, H, { drop: 0.9 });
+  personAt(group, mid + 1.3, 0, -Math.PI / 2, "sit", { wear: "law" });
   finish(kit, station, spec, x0, x1, { lights: 1, color: 0xffe0b0, intensity: 9, panels: false });
 }
 
@@ -327,6 +339,8 @@ function archive(group, station, x0, x1, hw, spec) {
   kit.cyl(x1 - 1.0, 0.95, -0.55, 0.012, 0.35, "brass", { seg: 6, solid: false });
   kit.cyl(x1 - 1.0, 1.12, -0.55, 0.06, 0.12, "paintGreen", { r2: 0.13, seg: 12, solid: false });
   chair(kit, x1 - 1.9, 0.3, { rotY: Math.PI, mat: "darkWood", seat: "darkWood" });
+  personAt(group, x1 - 1.9, 0.3, Math.PI / 2, "sit", { wear: "judicial" });
+  if (station.id === "judicial") relicAt(group, spec.interactables, "livro", x1 - 1.05, 0.79, -0.45);
   kit.sign(["O PACTO", "CONSULTA SOB REGISTRO"], { x: x1 - 0.03, y: 2.2, z: 0, w: 1.4, h: 0.4, fg: 0xd8cba4, bg: 0x2a1d16 });
   finish(kit, station, spec, x0, x1, { lights: 2, color: 0xffd9a8, intensity: 8 });
 }
@@ -359,6 +373,7 @@ function classroom(group, station, x0, x1, hw, spec) {
   kit.span(x1 - 0.12, x1 - 0.02, 0.92, 0.96, -1.8, 1.8, "darkWood", { solid: false });
   for (let k = 0; k < 5; k++) kit.box(x1 - 0.04, 1.3 + rand() * 0.6, -1.4 + k * 0.6, 0.005, 0.02, 0.3, "paper", { solid: false });
   desk(kit, x1 - 1.4, -1.6, { rotY: 0, w: 1.4, mat: "paleWood", top: "paleWood" });
+  personAt(group, x1 - 1.1, 0.6, -Math.PI / 2, "chat");
   chair(kit, x1 - 0.85, -1.6, { rotY: 0, seat: "paleWood", mat: "paleWood" });
   // Small desks in rows facing the board, the aisle kept on one side.
   for (let row = 0; row < 3; row++) for (const z of [-2.1, -0.9, 1.1, 2.2]) {
@@ -416,6 +431,8 @@ function seedbank(group, station, x0, x1, hw, spec) {
   kit.span(x0 + 2.2, x0 + 4.8, 0, 0.88, -hw + 0.3, -hw + 1.2, "steel");
   for (let k = 0; k < 6; k++) kit.box(x0 + 2.45 + k * 0.4, 0.9, -hw + 0.75, 0.34, 0.04, 0.5, "cardboard", { solid: false });
   bottles(kit, x0 + 3.5, 0.88, -hw + 1.05, { count: 6, along: "x", spacing: 0.2, mats: ["glassDark", "paper", "ceramic"], rand });
+  personAt(group, x0 + 3.5, -hw + 1.7, Math.PI, "work", { wear: "farm" });
+  if (station.id === "rocas") relicAt(group, spec.interactables, "semente", x0 + 4.4, 0.92, -hw + 0.6);
   // A cold store.
   kit.span(x0 + 2.2, x0 + 3.5, 0, 2.1, hw - 0.8, hw - 0.05, "steel");
   kit.span(x0 + 2.18, x0 + 2.2, 0.2, 1.9, hw - 0.75, hw - 0.1, "darkMetal", { solid: false });
@@ -438,6 +455,7 @@ function hydroponics(group, station, x0, x1, hw, spec) {
     kit.rod([x0 + 0.7, 2.9, z], [x1 - 0.3, 2.9, z], 0.04, "paintBlue");
   }
   kit.cyl(x1 - 0.7, 0.7, 0, 0.5, 1.4, "paintBlue", { seg: 16 });
+  personAt(group, x0 + 3.2, -0.9, Math.PI, "work", { wear: "farm" });
   kit.rod([x1 - 0.7, 1.4, 0], [x1 - 0.7, 2.9, 0], 0.04, "paintBlue");
   finish(kit, station, spec, x0, x1, { lights: 2, color: 0xf0d8ff, intensity: 9 });
 }
@@ -453,6 +471,9 @@ function tailor(group, station, x0, x1, hw, spec) {
   kit.box(x1 - 1.1, 0.92, -hw + 0.65, 0.5, 0.25, 0.2, "darkMetal", { solid: false });
   kit.box(x1 - 0.95, 1.02, -hw + 0.65, 0.2, 0.1, 0.15, "darkMetal", { solid: false });
   chair(kit, x1 - 1.1, -hw + 1.35, { rotY: -Math.PI / 2 });
+  personAt(group, x1 - 1.1, -hw + 1.35, Math.PI, "sit");
+  personAt(group, x0 + 3.5, 0.95, Math.PI, "work");
+  if (station.id === "bazar") relicAt(group, spec.interactables, "retalho", x0 + 4.2, 0.88, -0.3);
   const cloth = ["fabricRed", "fabricBlue", "fabricGreen", "fabricMustard", "linen", "fabricGrey"];
   shelf(kit, x1 - 0.3, 1.3, { rotY: 0, w: 2.6, d: 0.45, h: 2.2, levels: 4, mat: "darkWood",
     items: (_, y, k) => { for (let i = 0; i < 7; i++) kit.cyl(x1 - 0.3, y + 0.1, 0.1 + i * 0.36, 0.09, 0.42, cloth[(i + k) % cloth.length], { rotX: Math.PI / 2, seg: 10, solid: false }); } });
@@ -478,6 +499,8 @@ function bar(group, station, x0, x1, hw, spec) {
     kit.span(x0 + 1.5, x1 - 0.4, y, y + 0.03, -hw + 0.05, -hw + 0.35, "darkWood", { solid: false });
     bottles(kit, (x0 + x1) / 2 + 0.5, y + 0.03, -hw + 0.2, { count: 14, along: "x", spacing: 0.3, mats: ["glassDark", "brass", "copper", "ceramic"], rand });
   }
+  personAt(group, x0 + 3.2, -hw + 0.6, 0, "work");
+  for (const x of [x0 + 2.65, x0 + 4.15]) personAt(group, x, -hw + 1.75, Math.PI, "sit");
   // A copper still in the corner, and small tables.
   kit.cyl(x1 - 0.6, 0.6, hw - 0.6, 0.38, 1.2, "copper", { seg: 16 });
   kit.rod([x1 - 0.6, 1.2, hw - 0.6], [x1 - 0.6, 2.0, hw - 1.3], 0.04, "copper");
@@ -509,6 +532,7 @@ function ward(group, station, x0, x1, hw, spec) {
     kit.span(x - 0.95, x - 0.55, 0, 0.6, z - s * 0.2 - 0.2, z - s * 0.2 + 0.2, "paintCream");
   }
   kit.span(x1 - 1.4, x1 - 0.5, 0, 0.75, -0.6, 0.6, "paintCream");
+  personAt(group, x1 - 1.9, 0, Math.PI / 2, "work", { wear: "medical" });
   kit.box(x1 - 0.95, 0.85, 0.2, 0.3, 0.1, 0.4, "paper", { solid: false });
   for (let x = x0 + 1.4; x < x1 - 0.8; x += 2.0) ceilingPanel(kit, x, 0, H, { w: 1.5, d: 0.3 });
   finish(kit, station, spec, x0, x1, { lights: 2, color: 0xeef6f2, intensity: 10, panels: false });
@@ -521,6 +545,8 @@ function pharmacy(group, station, x0, x1, hw, spec) {
   kit.span(x0 + 2.95, x0 + 3.6, 1.0, 1.05, -hw + 1.05, hw - 0.02, "darkWood", { solid: false });
   kit.box(x0 + 3.2, 1.1, 1.2, 0.3, 0.08, 0.3, "brass", { solid: false });
   kit.cyl(x0 + 3.3, 1.12, 0.2, 0.07, 0.12, "ceramic", { seg: 10, solid: false });
+  personAt(group, x0 + 4.0, 0.6, -Math.PI / 2, "work", { wear: "medical" });
+  if (station.id === "enfermaria") relicAt(group, spec.interactables, "frasco", x0 + 5.3, 0.88, -hw + 0.42);
   for (const s of [-1, 1]) shelf(kit, x1 - 0.3, s * 1.5, { rotY: 0, w: 2.6, d: 0.35, h: 2.3, levels: 6, mat: "darkWood",
     items: (_, y) => bottles(kit, x1 - 0.3, y, s * 1.5, { count: 14, along: "z", spacing: 0.17, mats: ["glassDark", "ceramic", "glassDark", "brass"], rand }) });
   // The drawer cabinet and a work table with the scales.
@@ -549,6 +575,7 @@ function pumps(group, station, x0, x1, hw, spec) {
     kit.rod([x0 + 2.4, 2.1, z], [x0 + 2.4, 2.1, z - s * 0.25], 0.025, "darkMetal");
     gauge(kit, x0 + 2.2, 1.8, z, { r: 0.1 });
   }
+  personAt(group, x0 + 1.6, 0.4, Math.PI / 2, "work", { wear: "mechanical" });
   // The main along the back wall and puddles under it.
   kit.rod([x1 - 0.3, 0.5, -hw + 0.2], [x1 - 0.3, 0.5, hw - 0.2], 0.24, "paintBlue");
   for (const z of [-1.4, 0, 1.4]) kit.torus(x1 - 0.3, 0.5, z, 0.25, 0.035, "darkMetal", { rotY: 0, seg: 16 });
@@ -568,6 +595,7 @@ function lab(group, station, x0, x1, hw, spec) {
     kit.span(x0 + 4.2, x0 + 4.8, 0.85, 0.95, z - 0.25, z + 0.25, "steel", { solid: false });
     shelf(kit, x0 + 3.2, s * (hw - 0.15), { rotY: Math.PI / 2, w: 2.4, d: 0.22, h: 0.8, levels: 3, mat: "steel" });
   }
+  personAt(group, x0 + 2.8, hw - 1.0, 0, "work", { wear: "medical" });
   // The filter column and its sample rack.
   kit.cyl(x1 - 0.8, 1.3, 0, 0.35, 2.6, "glassDark", { seg: 16 });
   for (const y of [0.2, 1.3, 2.5]) kit.torus(x1 - 0.8, y, 0, 0.36, 0.03, "steel", { rotX: Math.PI / 2, seg: 18 });
@@ -596,6 +624,7 @@ function servers(group, station, x0, x1, hw, spec) {
   kit.span(x1 - 1.0, x1 - 0.1, 0, 0.75, -0.8, 0.8, "paintGreen");
   terminal(kit, x1 - 0.5, 0.78, 0, { rotY: 0, glow: "glowGreen" });
   chair(kit, x1 - 1.4, 0, { rotY: Math.PI });
+  personAt(group, x1 - 1.4, 0, Math.PI / 2, "sit", { wear: "it" });
   finish(kit, station, spec, x0, x1, { lights: 2, color: 0xcfe8ff, intensity: 8 });
 }
 
@@ -611,6 +640,7 @@ function radio(group, station, x0, x1, hw, spec) {
     kit.cyl(x1 - 0.75, 0.86, z + 0.35, 0.03, 0.16, "darkMetal", { seg: 6, solid: false });
     chair(kit, x1 - 1.35, z, { rotY: Math.PI });
   }
+  personAt(group, x1 - 1.35, -hw + 1.9, Math.PI / 2, "sit", { wear: "it" });
   // Reel-to-reel recorders and the patch board on the side wall.
   for (const z of [-0.6, 0.6]) {
     kit.span(x0 + 2.2, x0 + 2.8, 0, 1.3, hw - 0.55 + 0, hw - 0.05, "paintCream");
@@ -631,6 +661,7 @@ function workshop(group, station, x0, x1, hw, spec) {
   kit.box(x0 + 2.2, 1.0, -hw + 0.55, 0.2, 0.2, 0.3, "paintBlue", { solid: false });
   wallPanel(kit, x0 + 3.6, 1.7, -hw + 0.02, 2.6, 1.0, "paleWood", { rotY: 0 });
   for (let k = 0; k < 14; k++) kit.box(x0 + 2.45 + (k % 7) * 0.33, 1.5 + Math.floor(k / 7) * 0.42, -hw + 0.05, 0.04, 0.22 + rand() * 0.12, 0.02, k % 3 ? "steel" : "paintRed", { rotZ: (rand() - 0.5) * 0.3, solid: false });
+  personAt(group, x0 + 2.6, -hw + 1.25, Math.PI, "work", { wear: "mechanical" });
   // A lathe and a drill press.
   kit.span(x0 + 2.0, x0 + 4.0, 0, 0.85, hw - 1.2, hw - 0.4, "paintGreen");
   kit.span(x0 + 2.0, x0 + 2.5, 0.85, 1.35, hw - 1.1, hw - 0.5, "paintGreen", { solid: false });
@@ -658,6 +689,8 @@ function parts(group, station, x0, x1, hw, spec) {
   bars(kit, x1 - 1.8, -hw + 0.05, -0.6, { h: H - 0.1 });
   bars(kit, x1 - 1.8, 0.6, hw - 0.05, { h: H - 0.1 });
   kit.span(x1 - 2.0, x1 - 1.6, 0, 1.0, -0.6, 0.6, "darkWood");
+  personAt(group, x1 - 1.2, 0, -Math.PI / 2, "work");
+  if (station.id === "mecanica") relicAt(group, spec.interactables, "isqueiro", x1 - 1.8, 1.0, 0.3);
   kit.span(x1 - 1.8, x1 - 1.75, 1.0, H - 0.1, -0.6, -0.55, "darkMetal", { solid: false });
   kit.span(x1 - 1.8, x1 - 1.75, 1.0, H - 0.1, 0.55, 0.6, "darkMetal", { solid: false });
   for (let k = 0; k < 4; k++) crate(kit, x1 - 0.8, (k % 2) * 0.6, -hw + 0.6 + Math.floor(k / 2) * 0.7, { s: 0.6, solid: true });
@@ -679,6 +712,7 @@ function control(group, station, x0, x1, hw, spec) {
   controlDesk(kit, x1 - 2.0, 1.4, { w: 2.0, rand });
   chair(kit, x1 - 2.7, -1.3, { rotY: Math.PI });
   chair(kit, x1 - 2.7, 1.4, { rotY: Math.PI });
+  personAt(group, x1 - 2.7, -1.3, Math.PI / 2, "sit", { wear: "mechanical" });
   kit.span(x0 + 1.4, x0 + 2.0, 0, 1.1, -hw + 0.2, -hw + 0.8, "darkWood");
   kit.box(x0 + 1.7, 1.13, -hw + 0.5, 0.42, 0.05, 0.32, "paper", { rotX: -0.2, solid: false });
   noticeBoard(kit, x0 + 0.03, 1.6, hw - 0.6, { rotY: Math.PI / 2, w: 0.8, rand });
@@ -691,6 +725,7 @@ function lockers(group, station, x0, x1, hw, spec) {
   for (const s of [-1, 1]) locker(kit, x0 + 3.5, s * (hw - 0.27), { rotY: s > 0 ? Math.PI / 2 : -Math.PI / 2, count: 9, mat: mine ? "paintOlive" : "paintBlue" });
   bench(kit, x0 + 3.5, -0.9, { rotY: Math.PI / 2, len: 3.0 });
   bench(kit, x0 + 3.5, 0.9, { rotY: Math.PI / 2, len: 3.0 });
+  personAt(group, x0 + 3.0, -0.9, Math.PI, "sit", { wear: "mechanical" });
   if (mine) {
     // The lamp room: cap lamps charging in their rack, their lights amber.
     kit.span(x1 - 0.5, x1 - 0.05, 0, 2.2, -hw + 0.3, hw - 0.3, "darkMetal");
@@ -774,6 +809,7 @@ function mess(group, station, x0, x1, hw, spec) {
   for (const x of [x0 + 1.8, x1 - 1.5]) kit.span(x - 0.05, x + 0.05, 0, 0.74, -0.9, -0.1, "darkWood");
   for (const z of [-1.55, 0.55]) kit.span(x0 + 1.6, x1 - 1.3, 0.42, 0.47, z - 0.17, z + 0.17, "paleWood");
   for (let k = 0; k < 6; k++) kit.cyl(x0 + 2.0 + k * 0.55, 0.83, -0.5 + (k % 2) * 0.25, 0.04, 0.09, "ceramic", { seg: 8, solid: false });
+  for (const [x, z, yaw] of [[x0 + 2.2, -1.55, 0], [x0 + 3.4, -1.55, 0], [x0 + 2.8, 0.55, Math.PI], [x0 + 4.4, 0.55, Math.PI]]) personAt(group, x, z, yaw, "sit");
   kit.span(x1 - 0.65, x1 - 0.05, 0, 0.9, -hw + 0.1, hw - 1.0, "paintCream");
   kit.span(x1 - 0.68, x1 - 0.02, 0.9, 0.95, -hw + 0.08, hw - 0.98, "darkWood", { solid: false });
   kit.cyl(x1 - 0.35, 1.05, -1.2, 0.11, 0.2, "steel", { seg: 10, solid: false });

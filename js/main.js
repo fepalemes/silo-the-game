@@ -1,5 +1,8 @@
 import * as THREE from "three";
 import { createProgress, createSaveStore, STEPS } from "./progress.js";
+import { RELICS, currentStep, hintFor, talkTo } from "./quests.js";
+import { createCrowd } from "./world/people.js";
+import { createDust } from "./world/atmosphere.js";
 import { buildLayout, setWingCount, WING_OFFSETS, WORLD } from "./config.js";
 import { buildWorld } from "./world/index.js";
 import { createPlayer } from "./player.js";
@@ -81,6 +84,10 @@ const buildStart = performance.now();
 const layout = buildLayout();
 const world = buildWorld(scene, layout, { lightCount: quality.lights, detailRange: quality.detail });
 const { interactables } = world;
+// The people of the silo (js/world/people.js). Not in diagnostic views,
+// where a passer-by would only get in the way of a comparison.
+const crowd = params.get("people") === "0" || (params.has("view") && params.get("people") !== "1") ? null : createCrowd(scene, layout);
+const dust = params.get("dust") === "0" ? null : createDust(scene);
 // Normal maps are generated either way; dropping them here, before anything
 // has been drawn, keeps them off the GPU and out of the shaders entirely.
 if (!quality.normalMaps) {
@@ -112,6 +119,7 @@ const diagnostic = params.has("view") || params.has("wings");
 const saveStore = createSaveStore(() => window.localStorage, layout, 'layout-148-v1');
 const loaded = diagnostic ? {} : saveStore.load();
 const progress = createProgress(loaded.save?.progress);
+for (const entry of interactables) if (entry.relic && progress.has(entry.relic)) { entry.visual.visible = false; entry.mesh.visible = false; }
 let saveProtected = Boolean(loaded.error);
 for(const entry of interactables)if(entry.isDoor)entry.setOpen(loaded.save?.progress.doors?.[entry.id] || false);
 // A save from the old residential room may overlap a new partition/furniture.
@@ -147,7 +155,7 @@ const xr = createXRSession({
     lastProgressUI = "";
     updateProgressUI();
     xrHud.setLevel(levelLabels(describeLocation(layout, player.getState().theta, player.getState().level)));
-    xrHud.setNotice("Progresso salvo automaticamente");
+    xrHud.setNotice("Y/B · menu    Grip · correr");
     if (!player.enterXR()) xr.exit();
   },
   onEnd: () => {
@@ -157,9 +165,10 @@ const xr = createXRSession({
     player.exitXR();
     renderDirty = true;
   },
-  onSelect: () => interact(),
+  onSelect: () => (xrHud?.menuOpen() ? chooseMenu() : interact()),
   // The headset's system menu is open, or it has been taken off.
   onVisibility: (visible) => audio.setPaused(!visible),
+  onTrackingReset: () => player.trackingReset(),
 });
 
 // A save from an older layout can sit inside what is now a wall, where no step
@@ -193,6 +202,7 @@ function handleLockChange(locked) {
     hud.hideStart();
     hud.setPaused(false);
   } else if (started) {
+    refreshTravelList();
     hud.hideLore();
     xrHud?.hideRecord();
     player.setSuspended(false);
@@ -241,11 +251,15 @@ function updateProgressUI() {
   const data=progress.snapshot(), key=JSON.stringify(data);
   if(key===lastProgressUI)return;
   lastProgressUI=key;
-  const next=STEPS.find(s=>!data.completed.includes(s.id));
-  document.getElementById('mission-summary').textContent=next ? `${data.completed.length}/${STEPS.length} · ${next.title}` : 'Missão concluída · continue explorando';
-  xrHud?.setMission(next ? `${data.completed.length}/${STEPS.length} · ${next.title}` : 'Missão concluída · continue explorando');
-  document.getElementById('mission-hint').textContent=next?.hint || 'Explore os apartamentos e serviços do nível 28. Nas portas, use E para abrir ou fechar.';
-  document.getElementById('mission-steps').replaceChildren(...STEPS.map(s=>{
+  const next=currentStep(data.completed);
+  const done=STEPS.filter(s=>data.completed.includes(s.id)).length;
+  document.getElementById('mission-summary').textContent=next ? `${done}/${STEPS.length} · ${next.title}` : 'Jornada concluída · continue explorando';
+  xrHud?.setMission(next ? `${done}/${STEPS.length} · ${next.title}` : 'Jornada concluída · continue explorando');
+  document.getElementById('mission-hint').textContent=hintFor(next, data.items);
+  // The last step done, the one under way and the next two: the whole
+  // journey is ten steps, too long a list to keep on screen.
+  const at=next ? STEPS.indexOf(next) : STEPS.length;
+  document.getElementById('mission-steps').replaceChildren(...STEPS.filter((_,i)=>i>=at-1 && i<=at+2).map(s=>{
     const li=document.createElement('li'),done=data.completed.includes(s.id);
     li.textContent=`${done?'✓':s===next?'→':'○'} ${s.title}`;
     li.className=done?'done':s===next?'current':'';
@@ -278,6 +292,8 @@ const raycaster = new THREE.Raycaster();
 raycaster.far = 3.4;
 const screenCenter = new THREE.Vector2(0, 0);
 const interactableMeshes = interactables.map((entry) => entry.mesh);
+if (crowd) interactableMeshes.push(...crowd.talkable.meshes);
+const crowdMeshes = new Set(crowd?.talkable.meshes || []);
 let lookedAt = null;
 
 const hitPoint = new THREE.Vector3();
@@ -289,6 +305,7 @@ function updateInteraction() {
   //
   // On a screen the ray leaves the centre of the view; in a headset it leaves
   // the pointing hand.
+  if (xrHud?.menuOpen()) return;
   const hand = player.isPresenting() ? xr.pointer() : null;
   const aimed = player.isPresenting() ? Boolean(hand) : true;
   if (hand) raycaster.setFromXRController(hand);
@@ -300,11 +317,18 @@ function updateInteraction() {
     xrHud?.setPrompt(null);
     return;
   }
-  const hits = raycaster.intersectObjects(interactableMeshes, false);
+  const hits = raycaster.intersectObjects(interactableMeshes.filter((m) => m.visible), false);
   const hit = hits[0];
-  // A plaque behind a corridor wall must not be readable through that wall.
-  const front = hit ? raycaster.intersectObjects(hit.object.parent.children, true)[0] : null;
-  lookedAt = hit && front?.object === hit.object ? interactables.find((entry) => entry.mesh === hit.object) : null;
+  if (hit && crowdMeshes.has(hit.object)) {
+    // A person: whoever that instance is this frame.
+    const person = crowd.talkable.resolve(hit);
+    lookedAt = person ? { person, prompt: () => `[E] falar com ${person.name}` } : null;
+  } else {
+    // A plaque behind a corridor wall must not be readable through that wall.
+    const front = hit ? raycaster.intersectObjects(hit.object.parent.children, true)[0] : null;
+    lookedAt = hit && front?.object === hit.object ? interactables.find((entry) => entry.mesh === hit.object) : null;
+  }
+  if (lookedAt?.relic && !lookedAt.prompt) lookedAt.prompt = () => "[E] pegar o objeto";
   hud.setInteractVisible(Boolean(lookedAt) && !hud.isLoreOpen());
   const label = lookedAt?.prompt?.() || "[E] examinar registro";
   document.getElementById("interact-prompt").textContent = label;
@@ -314,6 +338,90 @@ function updateInteraction() {
   xrHud?.setPrompt(lookedAt ? label.replace(/^\[E\]\s*/, "Gatilho · ") : null, hitPoint);
 }
 
+// --- The headset's menu (Y or B) ---------------------------------------------
+// Pause, save, comfort settings and travel, pointed at with the beam. The
+// screen has the same travel list on its pause screen.
+const prefs = (() => { try { return JSON.parse(localStorage.getItem("silo18.xr") || "{}"); } catch { return {}; } })();
+function savePrefs() { try { localStorage.setItem("silo18.xr", JSON.stringify({ fast: player.isFastXR(), seated: player.isSeated() })); } catch {} }
+player.setFastXR(Boolean(prefs.fast));
+if (prefs.seated) player.setSeated(true);
+let menuPage = "main", menuEntries = [];
+function visitedPlaces() { return layout.stations.filter((s) => !s.generated && progress.hasVisited(s.id)); }
+// Arrive on the place's own gallery, beside the landing, facing the ring.
+function travelTo(st) {
+  hud.hideLore();
+  xrHud?.hideRecord();
+  player.teleport({ x: 19.5 * Math.cos(st.theta + 0.35), y: st.y, z: 19.5 * Math.sin(st.theta + 0.35), theta: st.theta, level: st.index, yaw: Math.PI / 2 - st.theta - 0.35 });
+  vignette?.flash?.();
+  const message = `Nível ${st.level} · ${st.name}`;
+  xrHud?.setNotice(message);
+  document.getElementById("save-notice").textContent = message;
+  renderDirty = true;
+}
+function showMenu(page = "main") {
+  menuPage = page;
+  if (page === "travel") {
+    const places = visitedPlaces();
+    menuEntries = [
+      ...places.map((st) => ({ label: `${String(st.level).padStart(3, "0")}  ${st.name}`, action: () => { closeMenu(); travelTo(st); } })),
+      { label: places.length ? "← Voltar" : "← Nenhum setor visitado ainda", action: () => showMenu("main") },
+    ];
+  } else {
+    menuEntries = [
+      { label: "Continuar", action: closeMenu },
+      { label: "Ir para um setor visitado →", action: () => showMenu("travel") },
+      { label: "Salvar progresso", action: () => { saveProgress(true); closeMenu(); } },
+      { label: `Velocidade: ${player.isFastXR() ? "rápida" : "normal"}`, action: () => { player.setFastXR(!player.isFastXR()); savePrefs(); showMenu("main"); } },
+      { label: `Modo sentado: ${player.isSeated() ? "ligado" : "desligado"}`, action: () => { player.setSeated(!player.isSeated()); savePrefs(); showMenu("main"); } },
+      { label: "Recalibrar altura (de pé)", action: () => { player.recalibrateHeight(); xrHud?.setNotice("Altura recalibrada"); closeMenu(); } },
+      { label: "Sair do modo VR", action: () => { closeMenu(); xr.exit(); } },
+    ];
+  }
+  xrHud?.openMenu(page === "travel" ? "Setores visitados" : "Silo 18 · Pausa", menuEntries);
+  player.setSuspended(true);
+}
+function closeMenu() {
+  xrHud?.closeMenu();
+  if (!hud.isLoreOpen()) player.setSuspended(false);
+}
+function chooseMenu() {
+  const entry = menuEntries[xrHud?.menuHover() ?? -1];
+  if (entry) { audio.interact(); entry.action(); }
+}
+function updateMenu() {
+  if (!player.isPresenting()) return;
+  if (xr.pollButtons().menu) {
+    if (xrHud?.menuOpen()) closeMenu();
+    else { hud.hideLore(); xrHud?.hideRecord(); showMenu("main"); }
+  }
+  if (!xrHud?.menuOpen()) return;
+  const hand = xr.pointer();
+  xrHud.setMenuHover(xrHud.menuHit(hand));
+  xr.beam.scale.z = 1.1;
+  xr.beam.material.opacity = 0.9;
+}
+
+// The same travel list on the screen's pause panel.
+const travelSelect = document.getElementById("travel-select");
+function refreshTravelList() {
+  const places = visitedPlaces();
+  travelSelect.innerHTML = places.length ? places.map((st) => `<option value="${st.index}">${String(st.level).padStart(3, "0")} · ${st.name}</option>`).join("") : "<option value=''>Nenhum setor visitado ainda</option>";
+  document.getElementById("travel-button").disabled = !places.length;
+}
+document.getElementById("travel-button").addEventListener("click", () => {
+  const st = layout.stations[Number(travelSelect.value)];
+  if (!st || travelSelect.value === "") return;
+  travelTo(st);
+  player.requestLock();
+});
+
+// Any text held up to read: a record, what someone says, a relic.
+function openText(title, lines, anchor) {
+  hud.showText(title, lines);
+  xrHud?.showRecord(title, lines, anchor);
+  player.setSuspended(true);
+}
+
 // The one action in the game: [E] on a keyboard, the trigger on a controller.
 function interact() {
   if (!player.isActive()) return;
@@ -321,6 +429,35 @@ function interact() {
     hud.hideLore();
     xrHud?.hideRecord();
     player.setSuspended(false);
+    return;
+  }
+  // Talking: the journey's people move it on; everyone else just talks.
+  if (lookedAt?.person) {
+    const person = lookedAt.person;
+    const said = person.character ? talkTo(person.character, progress.completed()) : { title: person.name, lines: [person.line || "..."] };
+    openText(said.title, said.lines, hitPoint);
+    if (said.complete && progress.complete(said.complete)) {
+      updateProgressUI();
+      saveProgress(false);
+      const next = currentStep(progress.completed());
+      const message = next ? `Nova tarefa: ${next.title}` : "Jornada concluída";
+      document.getElementById('save-notice').textContent = message;
+      xrHud?.setNotice(message);
+    }
+    person.wait = 4;
+    audio.interact();
+    return;
+  }
+  if (lookedAt?.relic) {
+    const relic = RELICS.find((r) => r.id === lookedAt.relic);
+    if (progress.take(relic.id)) {
+      lookedAt.visual.visible = false;
+      lookedAt.mesh.visible = false;
+      openText(`Relíquia · ${relic.name}`, [...relic.text, `${progress.items().length} de ${RELICS.length} relíquias encontradas.`], hitPoint);
+      updateProgressUI();
+      saveProgress(false);
+      audio.interact();
+    }
     return;
   }
   if (lookedAt?.action) {
@@ -387,6 +524,8 @@ function animate() {
   // World position, not camera.position: in a headset that is only the
   // head's offset inside the rig.
   world.update(camera.getWorldPosition(eye), dt);
+  crowd?.update(state, eye, dt);
+  dust?.update(eye, dt);
   if (presenting) vignette?.update(motion.travel || 0, dt);
   if(started && !diagnostic) {
     let changed=false;
@@ -397,7 +536,11 @@ function animate() {
     const far=WORLD.landingR+WORLD.corridorLen+layout.stations[0].roomDepth;
     if(state.level===0 && x>far-7 && Math.abs(z)<6)changed=progress.complete('screen') || changed;
     if(changed){updateProgressUI();saveProgress(false);}
+    // Every department stood in joins the travel list.
+    const here = state.level !== null ? layout.stations[state.level] : null;
+    if (here && !here.generated && progress.visit(here.id)) saveProgress(false);
   }
+  updateMenu();
 
   const info = describeLocation(layout, state.theta, state.level);
   const labels = hud.setLocation(info);
@@ -438,4 +581,4 @@ function animate() {
 renderer.setAnimationLoop(animate);
 
 // Module exports support browser regression checks without a global debug API.
-export { player, hud, layout, camera, renderer, scene, progress, world, quality, rig, xr };
+export { player, hud, layout, camera, renderer, scene, progress, world, quality, rig, xr, xrHud };

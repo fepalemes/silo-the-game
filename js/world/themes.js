@@ -3,7 +3,7 @@ import { buildCafeteria } from "./cafeteria.js";
 import { WORLD } from "../config.js";
 import { lerp } from "../mathutils.js";
 import { makeGrateTexture, makePlaqueTexture, mulberry32 } from "../textures.js";
-import { Kit, controlDesk, gauge, kitMaterial, pendant } from "./kit.js";
+import { Kit, controlDesk, gauge, kitMaterial, pendant, personAt } from "./kit.js";
 import { addBox, addCylinder, addGlow } from "./primitives.js";
 import { addFixtureLight, addLantern } from "./fixtures.js";
 
@@ -352,6 +352,8 @@ function themeGerador(group, station, roomStart, roomEnd, hw, spec = {}) {
     for (let x = roomStart + 1.5; x < roomEnd - 1; x += 3) kit.torus(x, 6.2, s * (hw - 0.5), 0.34, 0.05, "darkMetal", { rotY: Math.PI / 2, seg: 14 });
   }
   controlDesk(kit, roomStart + 3.6, -2.6, { w: 2.0, rand: mulberry32(144) });
+  for (const z of [-2.6, 2.6]) personAt(group, roomStart + 2.85, z, Math.PI / 2, "work", { wear: "mechanical" });
+  personAt(group, cx - 3.8, 1.2, Math.PI / 2, "watch", { wear: "mechanical" });
   controlDesk(kit, roomStart + 3.6, 2.6, { w: 2.0, rand: mulberry32(145) });
   for (const [x, z] of [[cx - 4, -4], [cx - 4, 4], [cx + 4, -4], [cx + 4, 4]]) pendant(kit, x, z, RH, { drop: 1.4, r: 0.5, glow: "glowWarm" });
   kit.sign(["FIM DO POÇO", "NÍVEL 144"], { x: roomEnd - 0.04, y: 2.4, z: -3.5, w: 1.3, h: 0.7, fg: 0xffcf9e, bg: 0x1a0f0a });

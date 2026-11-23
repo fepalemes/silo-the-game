@@ -305,3 +305,9 @@ button.secondary:hover { color:#1c241e; }
 /* While a headset session runs the canvas shows both eyes side by side; the flat HUD has its own version inside the scene (js/xr/hud.js). */
 body.in-headset #hud, body.in-headset #vignette { visibility: hidden; }
 #vr-hint { margin-top: 12px; }
+
+/* Travel to a department already visited, on the pause panel. */
+.travel { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin: 14px 0 4px; align-items: center; }
+.travel label { grid-column: 1 / -1; font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: rgba(215, 205, 176, .7); }
+.travel select { font: inherit; font-size: 13px; padding: 9px 10px; background: rgba(13, 15, 17, .9); color: #d7cdb0; border: 1px solid rgba(255, 177, 90, .35); }
+.travel .cta { margin: 0; animation: none; }

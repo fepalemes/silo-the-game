@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { buildLayout, WORLD } from '../js/config.js';
 import { pickQuality } from '../js/quality.js';
 import { createPlayer } from '../js/player.js';
-import { alignRig, createSnapTurn, headWorld, shapeStick, stepLocomotion, XR_COMFORT } from '../js/xr/locomotion.js';
+import { alignRig, createHeightGuard, createSnapTurn, headWorld, shapeStick, stepLocomotion, XR_COMFORT } from '../js/xr/locomotion.js';
 
 const near = (a, b, eps = 1e-9) => Math.abs(a - b) < eps;
 const layout = buildLayout();
@@ -125,6 +125,34 @@ assert.deepEqual([0.2, 0.7, 0.9, 0.9, 0.5, 0.1, -0.8, -0.8, 0].map(snap), [0, 1,
   assert(near(camera.position.x, walked.x) && near(camera.position.y, walked.y + WORLD.eyeHeight), 'and the screen camera picks up where the headset left off');
 }
 
+// --- eye height ----------------------------------------------------------------
+{
+  const guard = createHeightGuard({ standing: 1.65 });
+  // A player standing at 1.75 for a while: no correction, height learnt.
+  for (let i = 0; i < 400; i++) guard.update(1.75, 0.05);
+  assert(Math.abs(guard.offset()) < 1e-9, 'a good floor is left alone');
+  // The headset comes back from standby with the floor at head height.
+  guard.suspect();
+  for (let i = 0; i < 20; i++) guard.update(0.1, 0.05);
+  assert(Math.abs(0.1 + guard.offset() - 1.75) < 0.05, `a lost floor puts the eyes back at standing height (${(0.1 + guard.offset()).toFixed(2)})`);
+  // ...and the floor found again later does not leave them floating.
+  guard.suspect();
+  for (let i = 0; i < 20; i++) guard.update(1.75, 0.05);
+  assert(Math.abs(1.75 + guard.offset() - 1.75) < 0.05, 'a floor found again is not counted twice');
+  // Without any event: eyes stuck near the floor for a few seconds are put back.
+  const quiet = createHeightGuard({ standing: 1.65 });
+  for (let i = 0; i < 100; i++) quiet.update(0.2, 0.05);
+  assert(Math.abs(0.2 + quiet.offset() - 1.65) < 1e-6, 'eyes at ankle height for seconds are put back');
+  // Crouching to look under a table is not corrected.
+  const crouch = createHeightGuard({ standing: 1.65 });
+  for (let i = 0; i < 30; i++) crouch.update(0.9, 0.05);
+  assert(crouch.offset() === 0, 'a crouch is the player\'s own business');
+  // Seated: eyes at standing height whatever the headset says.
+  crouch.setSeated(true, 1.1);
+  assert(Math.abs(1.1 + crouch.offset() - 1.65) < 1e-9 && crouch.isSeated(), 'seated play pins the eyes at standing height');
+}
+assert(XR_COMFORT.brisk * XR_COMFORT.fast > XR_COMFORT.brisk && XR_COMFORT.brisk > XR_COMFORT.walk, 'running is faster than walking, and the fast setting faster still');
+
 // --- quality profiles --------------------------------------------------------
 const q = (query, ua = 'Mozilla/5.0 (Macintosh)') => pickQuality(new URLSearchParams(query), ua);
 const QUEST = 'Mozilla/5.0 (X11; Linux x86_64; Quest 3) AppleWebKit/537.36 OculusBrowser/33.0 Chrome/126 VR Safari/537.36';
@@ -142,4 +170,4 @@ assert.equal(q('quality=nonsense').name, 'desktop');
 assert(q('', QUEST).detail < q('').detail, 'the headset draws the facades\' detail over fewer levels');
 assert.equal(q('detail=5').detail, 10);
 
-console.log('XR TESTS PASSED: stick shaping, snap turn, gaze-relative walking, walls, head-pivot turning, real steps, leaning, session handover, recentre, quality profiles');
+console.log('XR TESTS PASSED: stick shaping, snap turn, gaze-relative walking, walls, head-pivot turning, real steps, leaning, session handover, recentre, eye height guard, quality profiles');

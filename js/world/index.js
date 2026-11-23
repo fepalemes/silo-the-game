@@ -4,7 +4,7 @@ import * as THREE from "three";
 import { WING_OFFSETS, WORLD } from "../config.js";
 import { createLightPool } from "../lightpool.js";
 import { buildTransit } from "./stairs.js";
-import { buildCentralPole, buildGalleryColumns, buildOuterShell, buildServiceRisers } from "./scenery.js";
+import { buildServiceRisers, buildVerticalStructure } from "./scenery.js";
 import { buildFacades } from "./facade.js";
 import { buildStation } from "./station.js";
 import { buildSafetySigns } from "./signs.js";
@@ -16,12 +16,12 @@ export function buildWorld(scene, layout, { lightCount = 10, detailRange = 62 } 
   // silo's own shell" from "it ended on something inside the level".
   structure.name = "structure";
   scene.add(structure);
-  buildOuterShell(structure, layout);
-  buildCentralPole(structure, layout);
-  buildGalleryColumns(structure, layout);
   // Chunks are groups shown only near the player's height; `half` is how far
   // one reaches above and below its centre.
   const chunks = [...buildServiceRisers(structure, layout), buildDome(scene, layout)];
+  // The shell, the stair's core, the gallery columns and the risers, in
+  // slices of a few levels (scenery.js).
+  for (const chunk of buildVerticalStructure(layout)) { scene.add(chunk.group); chunks.push(chunk); }
   const interactables = [];
   for (const slope of layout.slopes) {
     const group = new THREE.Group();
